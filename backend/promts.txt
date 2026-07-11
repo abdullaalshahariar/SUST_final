@@ -1,7 +1,33 @@
-how do i write transactions to sqlite3. look at the models.py for model deifnition.
+checke the db whether the agent id exists. if it does return something similar to this format "{
+  "agent_id" : "0"
+  "timestamp": "2026-07-11T13:50:00Z",
+  "physical_cash_balance": 12000.0,
+  "provider_balances": [
+    {
+      "provider_name": "bkash", ->enum
+      "e_money_balance": 45000.0
+    },
+    {
+      "provider_name": "nagad", ->enum
+      "e_money_balance": 3500.0
+    },
+    {
+      "provider_name": "rocket", ->enum
+      "e_money_balance": 15000.0
+    }
+  ]
+}"
 
-when the request body is inaccurate, i am getting error 500. but it should return 400. why?
 
-this is the new app.py
+read the /backend folder and write models for GET /analyze-cash-reserve/{agent_id} end point . here is the sample  response. "{
+"priority" : "high",
+"provide" : "baksh",
+"e_money" : "13000",
+"safety_threshould" : "10000",
+"burn_rate" : "250",
+"confidence" : "high",
+"recommended_action" : "Confirm Bkash Balance"
+}"
 
-i do not need to manage session
+
+i want to show the total cash money too. not juse e-money for each providers. and in PositionResponse model chage the balance from int to float. read the /backend directory and do change to appropriate files.
