@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SUST Agent Dashboard — Multi-Provider Liquidity & Operations</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ===== HEADER ===== -->
+  <header id="topHeader">
+    <div class="header-left">
+      <div class="logo-area">
+        <span class="logo-icon">◆</span>
+        <div>
+          <span class="logo-title">SUST Agent Dashboard</span>
+          <span class="logo-sub">bKash Codex Hackathon 2026</span>
+        </div>
+      </div>
+    </div>
+    <div class="header-center">
+      <div class="header-clock" id="headerClock">--:--:--</div>
+      <div class="header-date" id="headerDate">Loading...</div>
+    </div>
+    <div class="header-right">
+      <div class="agent-badge">
+        <span class="agent-avatar">RH</span>
+        <div>
+          <span class="agent-name">Rahim Store</span>
+          <span class="agent-location">Shahbagh, Dhaka</span>
+        </div>
+      </div>
+      <button class="notif-btn" id="notifBtn" title="Notifications">
+        <span>🔔</span>
+        <span class="notif-badge">2</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===== FILTER BAR ===== -->
+  <section id="filterBar">
+    <div class="filter-group">
+      <label>Provider</label>
+      <div class="pill-group" id="providerFilter">
+        <button class="pill active" data-provider="all">All</button>
+        <button class="pill bkash" data-provider="bKash">bKash</button>
+        <button class="pill nagad" data-provider="Nagad">Nagad</button>
+        <button class="pill rocket" data-provider="Rocket">Rocket</button>
+      </div>
+    </div>
+    <div class="filter-group">
+      <label>Time Range</label>
+      <select id="timeFilter">
+        <option value="15m">Last 15 min</option>
+        <option value="30m" selected>Last 30 min</option>
+        <option value="1h">Last 1 hour</option>
+        <option value="4h">Last 4 hours</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Area</label>
+      <select id="areaFilter">
+        <option value="all">All Areas</option>
+        <option value="Shahbagh">Shahbagh</option>
+        <option value="Motijheel">Motijheel</option>
+        <option value="Gulshan">Gulshan</option>
+        <option value="Uttara">Uttara</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Search Agent</label>
+      <input type="text" id="agentSearch" placeholder="Agent ID or name..." />
+    </div>
+    <div class="filter-group filter-actions">
+      <button class="btn-sim" id="simScenarioBtn" title="Run simulation scenario">▶ Simulate</button>
+    </div>
+  </section>
+
+  <!-- ===== MAIN DASHBOARD ===== -->
+  <main id="mainDashboard">
+
+    <!-- KPI Row -->
+    <section id="kpiRow">
+      <div class="kpi-card cash">
+        <div class="kpi-icon">💵</div>
+        <div class="kpi-body">
+          <span class="kpi-label">Physical Cash</span>
+          <span class="kpi-value" id="kpiCash">৳ 0</span>
+          <span class="kpi-sub" id="kpiCashSub">-- remaining</span>
+        </div>
+      </div>
+      <div class="kpi-card emoney">
+        <div class="kpi-icon">📱</div>
+        <div class="kpi-body">
+          <span class="kpi-label">Total e-Money</span>
+          <span class="kpi-value" id="kpiEmoney">৳ 0</span>
+          <span class="kpi-sub" id="kpiEmoneySub">across 3 providers</span>
+        </div>
+      </div>
+      <div class="kpi-card liquidity">
+        <div class="kpi-icon">📊</div>
+        <div class="kpi-body">
+          <span class="kpi-label">Liquidity Health</span>
+          <span class="kpi-value" id="kpiHealth">--%</span>
+          <span class="kpi-sub" id="kpiHealthSub">-- min until action</span>
+        </div>
+      </div>
+      <div class="kpi-card alerts-kpi">
+        <div class="kpi-icon">⚠️</div>
+        <div class="kpi-body">
+          <span class="kpi-label">Active Alerts</span>
+          <span class="kpi-value" id="kpiAlerts">0</span>
+          <span class="kpi-sub" id="kpiAlertsSub">0 high, 0 medium</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Provider Balances + Shared Cash -->
+    <section id="balanceSection">
+      <div class="section-header">
+        <h2>Provider Balances</h2>
+        <span class="section-sub">Shared physical cash &amp; provider-specific e-money positions</span>
+      </div>
+
+      <div class="shared-cash-card" id="sharedCashCard">
+        <div class="shared-cash-left">
+          <span class="shared-cash-icon">💰</span>
+          <div>
+            <span class="shared-cash-label">Shared Physical Cash Drawer</span>
+            <span class="shared-cash-amount" id="sharedCashAmount">৳ 0</span>
+          </div>
+        </div>
+        <div class="shared-cash-right">
+          <div class="progress-bar-container">
+            <div class="progress-bar" id="sharedCashBar"></div>
+          </div>
+          <span class="shared-cash-pct" id="sharedCashPct">0% remaining</span>
+        </div>
+      </div>
+
+      <div class="provider-grid" id="providerGrid">
+        <!-- rendered by JS -->
+      </div>
+
+      <div class="boundary-notice">
+        <span>🔒</span>
+        <span>Provider balances are logically separate. No conversion or transfer between providers is implied or performed.</span>
+      </div>
+    </section>
+
+    <!-- Two-column: Forecast + Alerts -->
+    <div class="two-col">
+      <!-- Liquidity Forecast -->
+      <section id="forecastSection">
+        <div class="section-header">
+          <h2>Liquidity Forecast</h2>
+          <span class="section-sub">Projected shortage timeline based on current transaction velocity</span>
+        </div>
+        <div id="forecastTimeline">
+          <!-- rendered by JS -->
+        </div>
+        <div class="forecast-note">
+          <span>ⓘ</span>
+          <span>Estimates use last 30 min velocity. Confidence varies by data freshness.</span>
+        </div>
+      </section>
+
+      <!-- Alerts Panel -->
+      <section id="alertsSection">
+        <div class="section-header">
+          <h2>Active Alerts <span class="badge-count" id="alertCount">0</span></h2>
+          <span class="section-sub">Liquidity &amp; anomaly alerts requiring attention</span>
+        </div>
+        <div id="alertList">
+          <!-- rendered by JS -->
+        </div>
+      </section>
+    </div>
+
+    <!-- Two-col: Unusual Activity + Case Coordination -->
+    <div class="two-col">
+      <!-- Unusual Activity -->
+      <section id="anomalySection">
+        <div class="section-header">
+          <h2>Unusual Transaction Patterns</h2>
+          <span class="section-sub">Activity flagged for review — not a fraud determination</span>
+        </div>
+        <div id="anomalyContent">
+          <!-- rendered by JS -->
+        </div>
+      </section>
+
+      <!-- Case Coordination -->
+      <section id="caseSection">
+        <div class="section-header">
+          <h2>Case Coordination</h2>
+          <span class="section-sub">Ownership, escalation, resolution tracking</span>
+        </div>
+        <div id="caseList">
+          <!-- rendered by JS -->
+        </div>
+      </section>
+    </div>
+
+    <!-- Recent Transactions -->
+    <section id="txnSection">
+      <div class="section-header">
+        <h2>Recent Transactions</h2>
+        <span class="section-sub">Latest cash-in / cash-out activity across all providers</span>
+      </div>
+      <div id="txnTable">
+        <!-- rendered by JS -->
+      </div>
+    </section>
+
+    <!-- Data Quality Notice -->
+    <section id="dataQualitySection">
+      <div class="dq-card">
+        <div class="dq-icon">🛡️</div>
+        <div class="dq-body">
+          <span class="dq-title">Provider Data Boundaries</span>
+          <span class="dq-text">This dashboard shows a unified operational view while keeping each provider's data logically separate. All balances are simulated. No real financial actions are executed. Alerts are advisory and require human review before any action.</span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== FOOTER ===== -->
+  <footer id="appFooter">
+    <span>SUST CSE Carnival 2026 — bKash Codex Community Hackathon</span>
+    <span>Demo Prototype | Simulated Data | Not for Production Use</span>
+  </footer>
+</div>
+
+<!-- ===== MODAL ===== -->
+<div id="modalOverlay" class="hidden">
+  <div id="modalContent">
+    <button id="modalClose" title="Close">✕</button>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
