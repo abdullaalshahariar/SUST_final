@@ -1,4 +1,5 @@
 import csv
+import os
 from calendar import monthrange
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -10,7 +11,7 @@ from models import Agent, Alert, Base, Provider, ProviderPosition, Transaction, 
 
 
 BACKEND_DIR = Path(__file__).resolve().parent
-DATA_DIR = BACKEND_DIR / "data"
+DATA_DIR = Path(os.getenv("DATA_DIR", BACKEND_DIR / "data"))
 DATA_DIR.mkdir(exist_ok=True)
 
 DATABASE_PATH = DATA_DIR / "mvp.db"
@@ -44,9 +45,15 @@ def _seed_demo_agents(db: Session, now: datetime) -> list[Agent]:
     """Create agents whose IDs match the synthetic seasonal-model categories."""
     agents = [
         Agent(
-            name="Zindabazar Super Agent" if index == 1 else f"Sylhet Demo Agent {index:02d}",
+            name=(
+                "Zindabazar Super Agent"
+                if index == 1
+                else "Sylhet Support Agent 02"
+                if index == 2
+                else f"Sylhet Demo Agent {index:02d}"
+            ),
             area=DEMO_AGENT_AREAS[(index - 1) % len(DEMO_AGENT_AREAS)],
-            shared_cash=70_000 if index == 1 else 65_000 + (index % 5) * 5_000,
+            shared_cash=70_000 if index == 1 else 15_000 if index == 2 else 65_000 + (index % 5) * 5_000,
             cash_threshold=20_000,
         )
         for index in range(1, 19)
@@ -192,6 +199,10 @@ def reset_demo_data() -> tuple[str, int]:
                 Provider(code="bkash_sim", display_name="bKash (simulated)"),
                 Provider(code="nagad_sim", display_name="Nagad (simulated)"),
                 Provider(code="rocket_sim", display_name="Rocket (simulated)"),
+                Provider(
+                    code="shared_cash_sim",
+                    display_name="Shared Cash Reserve (synthetic alert context)",
+                ),
             ]
         )
         agents = _seed_demo_agents(db, now)

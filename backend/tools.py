@@ -9,6 +9,8 @@ from models import Agent, Alert, ProviderPosition, Transaction
 FORECAST_WINDOW_MINUTES = 15
 ALERT_LEAD_TIME_MINUTES = 60
 MAX_VELOCITY_WINDOW_MINUTES = 30
+OPERATIONAL_ATTENTION_BUFFER = 1.75
+SHARED_CASH_ALERT_PROVIDER = "shared_cash_sim"
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -211,41 +213,120 @@ def calculate_liquidity_forecast(
     }
 
 
-def create_liquidity_alerts(db: Session, now: datetime) -> list[Alert]:
-    """Create advisory alerts for provider balances likely to hit their threshold soon."""
-    positions = db.scalars(select(ProviderPosition)).all()
+def reconcile_liquidity_alerts(
+    db: Session,
+    now: datetime,
+    positions: list[ProviderPosition] | None = None,
+) -> list[Alert]:
+    """Synchronise provider liquidity alerts with current synthetic balances."""
+    positions = positions or db.scalars(select(ProviderPosition)).all()
     created: list[Alert] = []
 
     for position in positions:
         forecast = calculate_liquidity_forecast(db, position, now)
         minutes = forecast["minutes_to_threshold"]
-        if minutes is None or minutes >= ALERT_LEAD_TIME_MINUTES:
-            continue
-
-        alert = Alert(
-            agent_id=position.agent_id,
-            provider_code=position.provider_code,
-            type="liquidity",
-            status="open",
-            title=f"{provider_label(position.provider_code)} e-money shortage risk",
-            evidence=(
-                f"Current balance: {position.balance:,} BDT; safety threshold: "
-                f"{position.safety_threshold:,} BDT; recent cash-in demand: "
-                f"{forecast['burn_per_minute']:,.0f} BDT/minute; estimated time to threshold: "
-                f"{minutes:g} minutes."
-            ),
-            recipient=f"{provider_label(position.provider_code)} Provider Operations",
-            owner="Sylhet Field Operations",
-            recommended_action=(
-                f"Confirm the {provider_label(position.provider_code)} balance and "
-                "arrange support through approved channels. No transfer or conversion is performed."
-            ),
-            confidence=forecast["confidence"],
+        attention_threshold = position.safety_threshold * OPERATIONAL_ATTENTION_BUFFER
+        needs_attention = (
+            position.balance < attention_threshold
+            or (minutes is not None and minutes < ALERT_LEAD_TIME_MINUTES)
         )
-        db.add(alert)
-        created.append(alert)
+        active_alerts = db.scalars(
+            select(Alert).where(
+                Alert.agent_id == position.agent_id,
+                Alert.provider_code == position.provider_code,
+                Alert.type == "liquidity",
+                Alert.status != "resolved",
+            )
+        ).all()
+
+        if needs_attention and not active_alerts:
+            minutes_text = f"{minutes:g} minutes" if minutes is not None else "not available"
+            alert = Alert(
+                agent_id=position.agent_id,
+                provider_code=position.provider_code,
+                type="liquidity",
+                status="open",
+                title=f"{provider_label(position.provider_code)} e-money requires review",
+                evidence=(
+                    f"Current balance: {position.balance:,} BDT; safety threshold: "
+                    f"{position.safety_threshold:,} BDT; operational attention buffer: "
+                    f"{attention_threshold:,.0f} BDT; estimated time to threshold: {minutes_text}."
+                ),
+                recipient=f"{provider_label(position.provider_code)} Provider Operations",
+                owner="Sylhet Field Operations",
+                recommended_action=(
+                    f"Confirm the {provider_label(position.provider_code)} balance and "
+                    "arrange support through approved channels. No transfer or conversion is performed."
+                ),
+                confidence=forecast["confidence"],
+            )
+            db.add(alert)
+            created.append(alert)
+        elif not needs_attention:
+            for alert in active_alerts:
+                alert.status = "resolved"
+                alert.note = (
+                    f"System balance check: {provider_label(position.provider_code)} e-money is "
+                    f"{position.balance:,.0f} BDT, at or above the "
+                    f"{OPERATIONAL_ATTENTION_BUFFER:g}x operational safety buffer."
+                )
+
+    # Shared physical cash is not a provider wallet. It uses its own synthetic
+    # alert context so it can be tracked without exposing it as bKash, Nagad,
+    # or Rocket e-money.
+    agent_ids = {position.agent_id for position in positions}
+    for agent_id in agent_ids:
+        agent = db.get(Agent, agent_id)
+        if agent is None:
+            continue
+        # Physical cash uses its explicit safety threshold. The 1.75x buffer
+        # is retained for provider e-money because that balance can deplete
+        # quickly through customer cash-ins.
+        attention_threshold = agent.cash_threshold
+        active_alerts = db.scalars(
+            select(Alert).where(
+                Alert.agent_id == agent.id,
+                Alert.provider_code == SHARED_CASH_ALERT_PROVIDER,
+                Alert.type == "cash_reserve",
+                Alert.status != "resolved",
+            )
+        ).all()
+        if agent.shared_cash < attention_threshold and not active_alerts:
+            alert = Alert(
+                agent_id=agent.id,
+                provider_code=SHARED_CASH_ALERT_PROVIDER,
+                type="cash_reserve",
+                status="open",
+                title="Shared physical cash requires review",
+                evidence=(
+                    f"Current shared cash: {agent.shared_cash:,.0f} BDT; safety threshold: "
+                    f"{agent.cash_threshold:,.0f} BDT; operational attention buffer: "
+                    f"{attention_threshold:,.0f} BDT."
+                ),
+                recipient="Central Cash Operations",
+                owner="Sylhet Field Operations",
+                recommended_action=(
+                    "Confirm the physical cash count and arrange approved cash support. "
+                    "No automatic cash movement is performed."
+                ),
+                confidence="high",
+            )
+            db.add(alert)
+            created.append(alert)
+        elif agent.shared_cash >= attention_threshold:
+            for alert in active_alerts:
+                alert.status = "resolved"
+                alert.note = (
+                    f"System cash check: shared physical cash is {agent.shared_cash:,.0f} BDT, "
+                    "at or above its shared-cash safety threshold."
+                )
 
     return created
+
+
+def create_liquidity_alerts(db: Session, now: datetime) -> list[Alert]:
+    """Compatibility wrapper used when the synthetic demo is seeded."""
+    return reconcile_liquidity_alerts(db, now)
 
 
 def provider_label(provider_code: str) -> str:
@@ -253,4 +334,5 @@ def provider_label(provider_code: str) -> str:
         "bkash_sim": "bKash",
         "nagad_sim": "Nagad",
         "rocket_sim": "Rocket",
+        SHARED_CASH_ALERT_PROVIDER: "Shared Cash Reserve",
     }.get(provider_code, provider_code)

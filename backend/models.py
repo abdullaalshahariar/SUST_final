@@ -81,6 +81,31 @@ class Alert(Base):
     )
 
 
+class SupportCoordination(Base):
+    """A provider-approved, synthetic same-provider support coordination case.
+
+    The record is deliberately not a wallet-transfer integration. It documents
+    a proposed physical-cash / same-provider e-money exchange between two
+    synthetic agents, and changes demo balances only after human confirmation.
+    """
+
+    __tablename__ = "support_coordinations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    provider_code: Mapped[str] = mapped_column(ForeignKey("providers.code"), nullable=False)
+    requester_agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), nullable=False)
+    supporting_agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), nullable=False)
+    alert_id: Mapped[int | None] = mapped_column(ForeignKey("alerts.id"), nullable=True)
+    cash_amount: Mapped[float] = mapped_column(Float, nullable=False)
+    e_money_amount: Mapped[float] = mapped_column(Float, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="proposed", nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
 class AlertStatus(str, Enum):
     OPEN = "open"
     ACKNOWLEDGED = "acknowledged"
@@ -162,6 +187,8 @@ class AgentResponse(BaseModel):
     area: str
     shared_cash: float
     cash_threshold: int
+    cash_attention_threshold: float
+    cash_requires_attention: bool
 
 
 class PositionResponse(BaseModel):
@@ -172,6 +199,8 @@ class PositionResponse(BaseModel):
     safety_threshold: int
     recorded_at: datetime
     quality_status: str
+    attention_threshold: float
+    requires_attention: bool
     forecast: LiquidityForecastResponse
 
 
@@ -191,6 +220,50 @@ class AlertResponse(BaseModel):
     owner: str
     recommended_action: str
     confidence: str
+    note: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CoordinationProposalCreate(BaseModel):
+    provider_code: str = Field(min_length=1, max_length=30)
+    requester_agent_id: int = Field(gt=0)
+    supporting_agent_id: int = Field(gt=0)
+    alert_id: int | None = Field(default=None, gt=0)
+    cash_amount: float = Field(gt=0)
+    e_money_amount: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def amounts_must_match_and_agents_must_differ(self):
+        if self.requester_agent_id == self.supporting_agent_id:
+            raise ValueError("Requester and supporting agent must be different.")
+        if round(self.cash_amount, 2) != round(self.e_money_amount, 2):
+            raise ValueError(
+                "Cash and same-provider e-money amounts must be equal in this simulation."
+            )
+        return self
+
+
+class CoordinationUpdate(BaseModel):
+    status: Literal["completed", "cancelled"]
+    note: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def completion_requires_note(self):
+        if self.status == "completed" and not (self.note or "").strip():
+            raise ValueError("A human confirmation note is required before completion.")
+        return self
+
+
+class CoordinationResponse(BaseModel):
+    id: int
+    provider_code: str
+    requester_agent_id: int
+    supporting_agent_id: int
+    alert_id: int | None
+    cash_amount: float
+    e_money_amount: float
+    status: str
     note: str | None
     created_at: datetime
     updated_at: datetime
