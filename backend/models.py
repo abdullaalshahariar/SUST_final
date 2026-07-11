@@ -116,10 +116,35 @@ class HealthResponse(BaseModel):
     status: str
 
 
+class MetricExplanation(BaseModel):
+    name: str
+    value: float
+    unit: str
+    explanation: str
+    source: str
+
+
+class MetricsResponse(BaseModel):
+    scope: str
+    metrics: list[MetricExplanation]
+    caveat: str
+
+
 class DemoResetResponse(BaseModel):
     message: str
     agent_name: str
     alerts_created: int
+
+
+class DemoStaleBalanceResponse(BaseModel):
+    """Confirmation returned after intentionally degrading synthetic demo data."""
+
+    message: str
+    agent_id: int
+    provider_code: str
+    quality_status: str
+    recorded_at: datetime
+    next_step: str
 
 
 class LiquidityForecastResponse(BaseModel):

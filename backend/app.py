@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+import json
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -16,8 +17,11 @@ from models import (
     AlertResponse,
     AlertUpdate,
     DemoResetResponse,
+    DemoStaleBalanceResponse,
     HealthResponse,
     InferenceTransaction,
+    MetricExplanation,
+    MetricsResponse,
     MonthlyVolumeFinding,
     MonthlyVolumeInferenceRecord,
     MonthlyVolumeInferenceRequest,
@@ -42,6 +46,8 @@ from tools import calculate_cash_velocity, calculate_liquidity_forecast
 BACKEND_DIR = Path(__file__).resolve().parent
 TRANSACTION_MODEL_PATH = BACKEND_DIR / "scripts" / "isolation_forest.joblib"
 SEASONAL_MODEL_PATH = BACKEND_DIR / "scripts" / "seasonal_volume_model.joblib"
+TRANSACTION_METRICS_PATH = BACKEND_DIR / "scripts" / "anomaly_threshold.json"
+SEASONAL_METRICS_PATH = BACKEND_DIR / "scripts" / "seasonal_volume_threshold.json"
 SEASONAL_BASE_YEAR = 2023
 
 
@@ -114,6 +120,120 @@ def health() -> HealthResponse:
     return HealthResponse(status="ok")
 
 
+@app.get("/metrics", response_model=MetricsResponse, tags=["evaluation"])
+def metrics() -> MetricsResponse:
+    """Return explained ML evaluation metrics for the synthetic demo datasets."""
+    try:
+        transaction_payload = json.loads(TRANSACTION_METRICS_PATH.read_text())
+        seasonal_payload = json.loads(SEASONAL_METRICS_PATH.read_text())
+        transaction = transaction_payload["metrics"]
+        seasonal = seasonal_payload["metrics"]
+    except (FileNotFoundError, json.JSONDecodeError, KeyError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Model evaluation metrics are unavailable: {error}",
+        ) from error
+
+    transaction_false_positive_rate = transaction["false_positive_count"] / max(
+        transaction["normal_window_count"], 1
+    )
+    legitimate_surge_flag_rate = transaction["legitimate_surge_flag_count"] / max(
+        transaction["legitimate_surge_count"], 1
+    )
+    eid_false_positive_rate = seasonal["normal_eid_months_flagged"] / max(
+        seasonal["normal_eid_months"], 1
+    )
+
+    return MetricsResponse(
+        scope="Offline evaluation on generated synthetic hold-out scenarios.",
+        metrics=[
+            MetricExplanation(
+                name="Transaction-pattern precision",
+                value=float(transaction["precision"]),
+                unit="proportion",
+                explanation=(
+                    "Of all short-term transaction windows flagged for review, the "
+                    "proportion that were injected unusual patterns. Higher is better."
+                    "AI can make mistakes. This is advisory only."   
+                ),
+                source="scripts/anomaly_threshold.json",
+            ),
+            MetricExplanation(
+                name="Transaction-pattern recall",
+                value=float(transaction["recall"]),
+                unit="proportion",
+                explanation=(
+                    "Of all injected unusual short-term patterns, the proportion the "
+                    "Isolation Forest pipeline detected. Higher is better."
+                    "AI can make mistakes. This is advisory only."   
+                ),
+                source="scripts/anomaly_threshold.json",
+            ),
+            MetricExplanation(
+                name="Transaction-pattern false-positive rate",
+                value=round(float(transaction_false_positive_rate), 4),
+                unit="proportion",
+                explanation=(
+                    "The proportion of normal ten-minute windows incorrectly flagged "
+                    "for review. Lower is better."
+                    "AI can make mistakes. This is advisory only."   
+                ),
+                source="scripts/anomaly_threshold.json",
+            ),
+            MetricExplanation(
+                name="Legitimate-surge flag rate",
+                value=round(float(legitimate_surge_flag_rate), 4),
+                unit="proportion",
+                explanation=(
+                    "The proportion of simulated normal high-demand surge windows that "
+                    "were incorrectly flagged. Lower is better."
+                    "AI can make mistakes. This is advisory only."   
+                ),
+                source="scripts/anomaly_threshold.json",
+            ),
+            MetricExplanation(
+                name="Seasonal monthly-volume precision",
+                value=float(seasonal["precision"]),
+                unit="proportion",
+                explanation=(
+                    "Of monthly-volume records flagged by the seasonal model, the "
+                    "proportion that were injected contextual anomalies."
+                    "AI can make mistakes. This is advisory only."   
+                ),
+                source="scripts/seasonal_volume_threshold.json",
+            ),
+            MetricExplanation(
+                name="Normal Eid-month flag rate",
+                value=round(float(eid_false_positive_rate), 4),
+                unit="proportion",
+                explanation=(
+                    "The proportion of normal simulated Eid months incorrectly flagged. "
+                    "This checks that expected Eid demand is not treated as suspicious."
+                    "AI can make mistakes. This is advisory only."   
+                ),
+                source="scripts/seasonal_volume_threshold.json",
+            ),
+            MetricExplanation(
+                name="Seasonal validation MAE",
+                value=float(seasonal["validation_mean_absolute_error"]),
+                unit="BDT",
+                explanation=(
+                    "Average absolute difference between predicted and actual monthly "
+                    "volume on held-out normal synthetic data. Lower is better."
+                    "AI can make mistakes. This is advisory only."   
+                ),
+                source="scripts/seasonal_volume_threshold.json",
+            ),
+        ],
+        caveat=(
+            "These results are measured on generated synthetic scenarios, not real "
+            "wallet data. They demonstrate prototype behaviour and do not establish "
+            "production accuracy or fraud-detection performance."
+            "AI can make mistakes. This is advisory only."   
+        ),
+    )
+
+
 @app.post(
     "/demo/reset",
     response_model=DemoResetResponse,
@@ -127,6 +247,51 @@ def reset_demo() -> DemoResetResponse:
         message="Synthetic Scenario 1 data reset successfully.",
         agent_name=agent_name,
         alerts_created=alerts_created,
+    )
+
+
+@app.post(
+    "/demo/simulate-stale-balance",
+    response_model=DemoStaleBalanceResponse,
+    tags=["demo"],
+)
+def simulate_stale_balance(
+    provider_code: str = Query(
+        "nagad_sim",
+        description="Provider balance to make stale. Run POST /demo/reset to restore fresh data.",
+    ),
+    db: Session = Depends(get_db),
+) -> DemoStaleBalanceResponse:
+    """Make one synthetic provider balance stale for an uncertainty demo.
+
+    This endpoint does not contact a provider or modify real-world balances. It
+    only changes the local demo record so GET /positions shows its safe,
+    low-confidence fallback instead of calculating a forecast from stale data.
+    """
+    agent = require_agent(db)
+    position = db.scalar(
+        select(ProviderPosition).where(
+            ProviderPosition.agent_id == agent.id,
+            ProviderPosition.provider_code == provider_code,
+        )
+    )
+    if position is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Provider position '{provider_code}' was not found for agent {agent.id}.",
+        )
+
+    position.quality_status = "stale"
+    position.recorded_at = utc_now() - timedelta(minutes=16)
+    db.commit()
+    db.refresh(position)
+    return DemoStaleBalanceResponse(
+        message="Synthetic balance marked stale. GET /positions will now show low confidence.",
+        agent_id=agent.id,
+        provider_code=position.provider_code,
+        quality_status=position.quality_status,
+        recorded_at=position.recorded_at,
+        next_step="Call GET /positions, then POST /demo/reset to restore fresh demo data.",
     )
 
 
