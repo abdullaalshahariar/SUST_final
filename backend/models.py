@@ -176,6 +176,20 @@ class TransactionResponse(BaseModel):
     status: str
 
 
+class TransactionCreate(BaseModel):
+    """Fields accepted when simulating a new transaction.
+
+    The database generates ``id`` when the transaction is inserted.
+    """
+
+    provider_code: str = Field(min_length=1, max_length=30)
+    type: str = Field(min_length=1, max_length=20)
+    amount: int = Field(gt=0)
+    event_at: datetime
+    location: str = Field(min_length=1, max_length=150)
+    status: str = Field(min_length=1, max_length=30)
+
+
 class OverviewResponse(BaseModel):
     agent: AgentResponse
     positions: list[PositionResponse]
