@@ -1,0 +1,20 @@
+{
+  "anomaly_threshold": 0.6212962577895053,
+  "threshold_method": "99th percentile of held-out normal-window scores",
+  "review_gate": {
+    "minimum_cash_out_count": 10,
+    "minimum_similarity_ratio": 0.75
+  },
+  "metrics": {
+    "window_count": 2729,
+    "normal_window_count": 2723,
+    "injected_anomaly_window_count": 6,
+    "flagged_window_count": 6,
+    "true_positive_count": 6,
+    "false_positive_count": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "legitimate_surge_count": 9,
+    "legitimate_surge_flag_count": 0
+  }
+}

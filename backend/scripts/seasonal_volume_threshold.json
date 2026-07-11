@@ -1,0 +1,17 @@
+{
+  "volume_ratio_threshold": 1.5,
+  "threshold_method": "max(1.5, 99th percentile of normal validation volume ratios)",
+  "metrics": {
+    "history_rows": 1944,
+    "normal_rows": 1928,
+    "injected_anomaly_rows": 16,
+    "flagged_rows": 16,
+    "true_positive_count": 16,
+    "false_positive_count": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "normal_eid_months": 316,
+    "normal_eid_months_flagged": 0,
+    "validation_mean_absolute_error": 12061.77
+  }
+}
