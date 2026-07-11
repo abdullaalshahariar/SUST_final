@@ -94,20 +94,138 @@ Suggested dependencies: `fastapi`, `uvicorn[standard]`, `sqlalchemy`, `pydantic`
 
 Store all timestamps as UTC ISO-8601 text (`2026-07-11T10:30:00Z`). SQLite does not enforce native enums, so validate all enum values in Pydantic and optionally add `CHECK` constraints in SQLAlchemy.
 
-### Tables
+### Tables and column dictionary
 
-| Table | Purpose | Key fields |
-|---|---|---|
-| `providers` | Simulated provider catalogue | `code`, `display_name`, `is_active` |
-| `agents` | Outlet and shared-cash identity | `id`, `name`, `area`, `shared_cash_threshold`, `status` |
-| `provider_positions` | Time-series provider e-money position | `agent_id`, `provider_code`, `e_money_balance`, `safety_threshold`, `recorded_at`, `quality_status` |
-| `cash_snapshots` | Time-series shared physical cash | `agent_id`, `physical_cash`, `recorded_at`, `quality_status` |
-| `transactions` | Simulated immutable transaction events | `id`, `agent_id`, `provider_code`, `event_at`, `type`, `amount`, `account_hash` |
-| `alerts` | Human-review operational alert | `id`, `agent_id`, `provider_code`, `type`, `severity`, `status`, `confidence`, `recommended_action` |
-| `alert_evidence` | Evidence displayed in the UI | `alert_id`, `key`, `value_text`, `value_number`, `message` |
-| `cases` | Ownership and lifecycle for one alert | `id`, `alert_id`, `owner_role`, `assignee`, `status`, `priority` |
-| `case_notes` | Append-only human notes | `case_id`, `author`, `body`, `created_at` |
-| `model_runs` | Optional reproducibility for the ML model | `id`, `model_name`, `trained_at`, `train_rows`, `metrics_json` |
+SQLite storage classes are used below: `INTEGER`, `REAL`, and `TEXT`. Enum values and timestamps are stored as `TEXT`; Pydantic validates enum values before insertion. All timestamps are UTC ISO-8601 strings. `PK` means primary key and `FK` means foreign key.
+
+#### `providers` — simulated provider catalogue
+
+| Column | SQLite type | Constraints | Purpose |
+|---|---|---|---|
+| `code` | `TEXT` | PK; enum `ProviderCode` | Stable simulated provider identifier, for example `bkash_sim`. |
+| `display_name` | `TEXT` | NOT NULL; max 80 characters | Name shown in the dashboard. |
+| `is_active` | `INTEGER` | NOT NULL; default `1`; boolean `0/1` | Determines whether the provider is available for new simulated events. |
+| `created_at` | `TEXT` | NOT NULL | UTC time at which the provider record was created. |
+
+#### `agents` — outlet and shared-cash identity
+
+| Column | SQLite type | Constraints | Purpose |
+|---|---|---|---|
+| `id` | `INTEGER` | PK; autoincrement | Internal outlet/agent identifier. |
+| `name` | `TEXT` | NOT NULL; max 100 characters | Simulated outlet name shown to users. |
+| `area` | `TEXT` | NOT NULL; max 100 characters | Simulated area/thana/district used for filtering. |
+| `shared_cash_threshold` | `REAL` | NOT NULL; `>= 0` | Minimum safe physical cash reserve for this outlet. |
+| `status` | `TEXT` | NOT NULL; enum `AgentStatus` | Whether the outlet is active, unavailable, or closed. |
+| `created_at` | `TEXT` | NOT NULL | UTC creation time. |
+
+#### `provider_positions` — time-series provider e-money position
+
+| Column | SQLite type | Constraints | Purpose |
+|---|---|---|---|
+| `id` | `INTEGER` | PK; autoincrement | Internal snapshot identifier. |
+| `agent_id` | `INTEGER` | NOT NULL; FK → `agents.id` | Outlet whose provider position is recorded. |
+| `provider_code` | `TEXT` | NOT NULL; FK → `providers.code`; enum `ProviderCode` | The logically separate simulated provider. |
+| `e_money_balance` | `REAL` | NOT NULL; `>= 0` | Simulated available e-money position for this provider at the outlet. |
+| `safety_threshold` | `REAL` | NOT NULL; `>= 0` | Minimum safe provider-specific e-money position. |
+| `recorded_at` | `TEXT` | NOT NULL | UTC time represented by this snapshot. |
+| `quality_status` | `TEXT` | NOT NULL; enum `DataQualityStatus` | Fresh, stale, missing, or conflicting source-data condition. |
+| `source_event_id` | `TEXT` | NULL; max 80 characters | Synthetic upstream reference, used to diagnose duplicate/conflicting feeds. |
+| `created_at` | `TEXT` | NOT NULL | UTC insertion time; may differ from `recorded_at`. |
+
+#### `cash_snapshots` — time-series shared physical cash
+
+| Column | SQLite type | Constraints | Purpose |
+|---|---|---|---|
+| `id` | `INTEGER` | PK; autoincrement | Internal snapshot identifier. |
+| `agent_id` | `INTEGER` | NOT NULL; FK → `agents.id` | Outlet whose shared cash drawer is recorded. |
+| `physical_cash` | `REAL` | NOT NULL; `>= 0` | Simulated physical cash available across all providers. |
+| `recorded_at` | `TEXT` | NOT NULL | UTC time represented by this cash reading. |
+| `quality_status` | `TEXT` | NOT NULL; enum `DataQualityStatus` | Freshness/quality of the cash reading. |
+| `created_at` | `TEXT` | NOT NULL | UTC insertion time. |
+
+#### `transactions` — simulated immutable transaction events
+
+| Column | SQLite type | Constraints | Purpose |
+|---|---|---|---|
+| `id` | `TEXT` | PK; max 64 characters | Deterministic synthetic transaction ID; prevents duplicate ingestion. |
+| `agent_id` | `INTEGER` | NOT NULL; FK → `agents.id` | Outlet that served the simulated transaction. |
+| `provider_code` | `TEXT` | NOT NULL; FK → `providers.code`; enum `ProviderCode` | Provider context for the transaction; never merged with another provider balance. |
+| `event_at` | `TEXT` | NOT NULL | UTC time when the simulated transaction occurred. |
+| `type` | `TEXT` | NOT NULL; enum `TransactionType` | Cash-in, cash-out, payment, transfer, or reversal category. |
+| `amount` | `REAL` | NOT NULL; `> 0` | Simulated transaction amount in BDT for prototype calculations. |
+| `status` | `TEXT` | NOT NULL; enum `TransactionStatus` | Completed, pending, reversed, or rejected event state. |
+| `account_hash` | `TEXT` | NULL; max 64 characters | Synthetic non-reversible account grouping identifier for anomaly features. |
+| `device_hash` | `TEXT` | NULL; max 64 characters | Synthetic non-reversible device grouping identifier for anomaly features. |
+| `channel` | `TEXT` | NOT NULL; max 40 characters | Simulated entry channel, normally `agent_counter`. |
+| `source_event_id` | `TEXT` | NULL; max 80 characters | Synthetic upstream event ID for duplicate-feed testing. |
+| `created_at` | `TEXT` | NOT NULL | UTC API insertion time. |
+
+#### `alerts` — human-review operational alert
+
+| Column | SQLite type | Constraints | Purpose |
+|---|---|---|---|
+| `id` | `INTEGER` | PK; autoincrement | Internal alert identifier. |
+| `agent_id` | `INTEGER` | NOT NULL; FK → `agents.id` | Outlet affected by the alert. |
+| `provider_code` | `TEXT` | NULL; FK → `providers.code`; enum `ProviderCode` | Provider affected by the alert; NULL only for shared-cash alerts. |
+| `type` | `TEXT` | NOT NULL; enum `AlertType` | Liquidity, unusual activity, data quality, or availability alert category. |
+| `severity` | `TEXT` | NOT NULL; enum `AlertSeverity` | Low, medium, high, or critical operational urgency. |
+| `status` | `TEXT` | NOT NULL; enum `AlertStatus` | Review lifecycle state: new through resolved/dismissed. |
+| `title` | `TEXT` | NOT NULL; max 160 characters | Short UI heading. |
+| `message` | `TEXT` | NOT NULL; max 1,000 characters | Careful advisory explanation; never a fraud finding. |
+| `confidence` | `TEXT` | NOT NULL; enum `ConfidenceLevel` | Human-readable high/medium/low confidence. |
+| `confidence_score` | `REAL` | NOT NULL; `0..1` | Numeric score that supports confidence presentation. |
+| `recommended_action` | `TEXT` | NOT NULL; max 500 characters | Safe human next step, for example contact provider operations. |
+| `dedupe_key` | `TEXT` | NOT NULL; UNIQUE for open alerts | Deterministic key to avoid repeating the same open alert. |
+| `created_at` | `TEXT` | NOT NULL | UTC time alert was first raised. |
+| `updated_at` | `TEXT` | NOT NULL | UTC time of most recent alert/case lifecycle change. |
+
+#### `alert_evidence` — evidence displayed in the UI
+
+| Column | SQLite type | Constraints | Purpose |
+|---|---|---|---|
+| `id` | `INTEGER` | PK; autoincrement | Internal evidence item identifier. |
+| `alert_id` | `INTEGER` | NOT NULL; FK → `alerts.id` | Alert this evidence supports. |
+| `key` | `TEXT` | NOT NULL; max 60 characters | Machine-readable evidence name, for example `cash_out_rate`. |
+| `value_text` | `TEXT` | NULL; max 120 characters | Display value for categorical or timestamp evidence. |
+| `value_number` | `REAL` | NULL | Display/calculation value for numeric evidence. |
+| `message` | `TEXT` | NOT NULL; max 300 characters | Plain-language interpretation shown to the operator. |
+| `created_at` | `TEXT` | NOT NULL | UTC creation time. |
+
+#### `cases` — ownership and lifecycle for one alert
+
+| Column | SQLite type | Constraints | Purpose |
+|---|---|---|---|
+| `id` | `INTEGER` | PK; autoincrement | Internal case identifier. |
+| `alert_id` | `INTEGER` | NOT NULL; UNIQUE; FK → `alerts.id` | The one alert this case coordinates. |
+| `owner_role` | `TEXT` | NOT NULL; enum `OwnerRole` | Responsible function, such as provider operations or risk review. |
+| `assignee` | `TEXT` | NULL; max 80 characters | Simulated person/team assigned to follow up. |
+| `priority` | `TEXT` | NOT NULL; enum `CasePriority` | P1, P2, or P3 response priority. |
+| `status` | `TEXT` | NOT NULL; enum `CaseStatus` | Case lifecycle: open, in progress, escalated, resolved, closed. |
+| `language` | `TEXT` | NOT NULL; enum `LanguageCode`; default `en` | Preferred explanatory language for the case. |
+| `created_at` | `TEXT` | NOT NULL | UTC case creation time. |
+| `updated_at` | `TEXT` | NOT NULL | UTC latest case update time. |
+
+#### `case_notes` — append-only human notes
+
+| Column | SQLite type | Constraints | Purpose |
+|---|---|---|---|
+| `id` | `INTEGER` | PK; autoincrement | Internal note identifier. |
+| `case_id` | `INTEGER` | NOT NULL; FK → `cases.id` | Case to which this note belongs. |
+| `author` | `TEXT` | NOT NULL; max 80 characters | Simulated staff member or team adding the note. |
+| `body` | `TEXT` | NOT NULL; max 1,000 characters | Human-review or resolution note; never credentials or personal data. |
+| `created_at` | `TEXT` | NOT NULL | UTC append time; this record is never edited. |
+
+#### `model_runs` — optional reproducibility for the ML model
+
+| Column | SQLite type | Constraints | Purpose |
+|---|---|---|---|
+| `id` | `INTEGER` | PK; autoincrement | Internal training-run identifier. |
+| `model_name` | `TEXT` | NOT NULL; max 100 characters | Name/version, for example `isolation_forest_v1`. |
+| `trained_at` | `TEXT` | NOT NULL | UTC model-training completion time. |
+| `train_rows` | `INTEGER` | NOT NULL; `>= 0` | Number of synthetic normal rows used for training. |
+| `feature_names_json` | `TEXT` | NOT NULL | JSON array listing features in the trained-model order. |
+| `metrics_json` | `TEXT` | NOT NULL | JSON object with offline metrics and contamination/threshold settings. |
+| `artifact_path` | `TEXT` | NULL; max 300 characters | Local path to the optional serialized model artifact; do not expose through API. |
 
 ### Important relationships and indexes
 
@@ -131,7 +249,7 @@ CREATE INDEX ix_position_agent_provider_time
 CREATE INDEX ix_cash_agent_time ON cash_snapshots(agent_id, recorded_at DESC);
 CREATE INDEX ix_alert_status_time ON alerts(status, created_at DESC);
 CREATE UNIQUE INDEX ux_open_alert_dedupe
-  ON alerts(agent_id, provider_code, type, status)
+  ON alerts(dedupe_key)
   WHERE status IN ('new', 'acknowledged', 'assigned', 'escalated');
 ```
 

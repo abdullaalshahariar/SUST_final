@@ -1,0 +1,7 @@
+how do i write transactions to sqlite3. look at the models.py for model deifnition.
+
+when the request body is inaccurate, i am getting error 500. but it should return 400. why?
+
+this is the new app.py
+
+i do not need to manage session
