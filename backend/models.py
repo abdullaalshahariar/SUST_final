@@ -7,6 +7,9 @@ from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
+PROVIDER_CODE_FOREIGN_KEY = "providers.code"
+
+
 def utc_now() -> datetime:
     """Return the current UTC time for synthetic records."""
     return datetime.now(timezone.utc)
@@ -38,7 +41,7 @@ class ProviderPosition(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), nullable=False)
-    provider_code: Mapped[str] = mapped_column(ForeignKey("providers.code"), nullable=False)
+    provider_code: Mapped[str] = mapped_column(ForeignKey(PROVIDER_CODE_FOREIGN_KEY), nullable=False)
     balance: Mapped[float] = mapped_column(Float, nullable=False)
     safety_threshold: Mapped[int] = mapped_column(Integer, nullable=False)
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -52,7 +55,7 @@ class Transaction(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), nullable=False)
-    provider_code: Mapped[str] = mapped_column(ForeignKey("providers.code"), nullable=False)
+    provider_code: Mapped[str] = mapped_column(ForeignKey(PROVIDER_CODE_FOREIGN_KEY), nullable=False)
     event_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     type: Mapped[str] = mapped_column(String(20), nullable=False)  # cash_in or cash_out
     amount: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -65,7 +68,7 @@ class Alert(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), nullable=False)
-    provider_code: Mapped[str] = mapped_column(ForeignKey("providers.code"), nullable=False)
+    provider_code: Mapped[str] = mapped_column(ForeignKey(PROVIDER_CODE_FOREIGN_KEY), nullable=False)
     type: Mapped[str] = mapped_column(String(30), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="open", nullable=False)
     title: Mapped[str] = mapped_column(String(180), nullable=False)
@@ -92,7 +95,7 @@ class SupportCoordination(Base):
     __tablename__ = "support_coordinations"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    provider_code: Mapped[str] = mapped_column(ForeignKey("providers.code"), nullable=False)
+    provider_code: Mapped[str] = mapped_column(ForeignKey(PROVIDER_CODE_FOREIGN_KEY), nullable=False)
     requester_agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), nullable=False)
     supporting_agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), nullable=False)
     alert_id: Mapped[int | None] = mapped_column(ForeignKey("alerts.id"), nullable=True)
