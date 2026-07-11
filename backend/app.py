@@ -310,11 +310,11 @@ def reset_demo() -> DemoResetResponse:
     tags=["demo"],
 )
 def simulate_stale_balance(
+    db: Annotated[Session, Depends(get_db)],
     provider_code: str = Query(
         "nagad_sim",
         description="Provider balance to make stale. Run POST /demo/reset to restore fresh data.",
     ),
-    db: Session = Depends(get_db),
 ) -> DemoStaleBalanceResponse:
     """Make one synthetic provider balance stale for an uncertainty demo.
 
@@ -350,7 +350,7 @@ def simulate_stale_balance(
 
 
 @app.get("/providers", response_model=list[ProviderResponse], tags=["monitoring"])
-def list_providers(db: Session = Depends(get_db)) -> list[ProviderResponse]:
+def list_providers(db: Annotated[Session, Depends(get_db)]) -> list[ProviderResponse]:
     """List the logically separate simulated providers."""
     return [
         ProviderResponse(code=provider.code, display_name=provider.display_name)
@@ -360,7 +360,7 @@ def list_providers(db: Session = Depends(get_db)) -> list[ProviderResponse]:
 
 
 @app.get("/agents", response_model=list[AgentResponse], tags=["monitoring"])
-def list_agents(db: Session = Depends(get_db)) -> list[AgentResponse]:
+def list_agents(db: Annotated[Session, Depends(get_db)]) -> list[AgentResponse]:
     """List synthetic agents for provider-side filtering and coordination."""
     return [
         AgentResponse(
@@ -377,7 +377,7 @@ def list_agents(db: Session = Depends(get_db)) -> list[AgentResponse]:
 
 
 @app.get("/agents/{agent_id}", response_model=AgentResponse, tags=["monitoring"])
-def get_agent(agent_id: int, db: Session = Depends(get_db)) -> AgentResponse:
+def get_agent(agent_id: int, db: Annotated[Session, Depends(get_db)]) -> AgentResponse:
     """Return one synthetic agent for the selected dashboard workspace."""
     agent = require_selected_agent(db, agent_id)
     return AgentResponse(
@@ -397,9 +397,9 @@ def get_agent(agent_id: int, db: Session = Depends(get_db)) -> AgentResponse:
     tags=["provider operations"],
 )
 def list_provider_coordination(
+    db: Annotated[Session, Depends(get_db)],
     provider_code: str | None = Query(None, description="Limit cases to one provider."),
     case_status: str | None = Query(None, alias="status", description="Limit by case status."),
-    db: Session = Depends(get_db),
 ) -> list[CoordinationResponse]:
     """List synthetic provider support-coordination cases without wallet access."""
     query = select(SupportCoordination)
@@ -419,7 +419,7 @@ def list_provider_coordination(
 )
 def create_coordination_proposal(
     payload: CoordinationProposalCreate,
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
 ) -> CoordinationResponse:
     """Record a human-created same-provider support proposal for synthetic data.
 
@@ -466,7 +466,7 @@ def create_coordination_proposal(
 def update_coordination_case(
     case_id: int,
     payload: CoordinationUpdate,
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
 ) -> CoordinationResponse:
     """Complete or cancel a synthetic support case after human confirmation."""
     case = db.get(SupportCoordination, case_id)
@@ -610,11 +610,11 @@ def update_coordination_case(
     tags=["monitoring"],
 )
 def list_positions(
+    db: Annotated[Session, Depends(get_db)],
     agent_id: int | None = Query(None, description="Agent to inspect. Omit for the demo agent."),
     provider_code: str | None = Query(
         None, description="Limit the response to one provider's logically separate balance."
     ),
-    db: Session = Depends(get_db),
 ) -> list[PositionResponse]:
     """Return each provider balance with its explainable liquidity forecast."""
     agent = require_selected_agent(db, agent_id)
@@ -656,12 +656,12 @@ def list_positions(
 
 @app.get("/alerts", response_model=list[AlertResponse], tags=["alerts"])
 def list_alerts(
+    db: Annotated[Session, Depends(get_db)],
     include_resolved: bool = Query(False, description="Include alerts already resolved by a human."),
     agent_id: int | None = Query(None, description="Agent to inspect. Omit for the demo agent."),
     provider_code: str | None = Query(
         None, description="Limit the response to one provider's routed alerts."
     ),
-    db: Session = Depends(get_db),
 ) -> list[AlertResponse]:
     """List alerts and the evidence supporting each advisory warning."""
     agent = require_selected_agent(db, agent_id)
@@ -678,7 +678,7 @@ def list_alerts(
 def update_alert(
     alert_id: int,
     payload: AlertUpdate,
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
 ) -> AlertResponse:
     """Acknowledge an alert or resolve it with a required human-review note."""
     alert = db.get(Alert, alert_id)
@@ -698,11 +698,11 @@ def update_alert(
     tags=["monitoring"],
 )
 def list_recent_transactions(
+    db: Annotated[Session, Depends(get_db)],
     limit: Annotated[
         int, Query(ge=1, le=100, description="Maximum number of recent synthetic transactions.")
     ] = 8,
     agent_id: int | None = Query(None, description="Agent to inspect. Omit for the demo agent."),
-    db: Session = Depends(get_db),
 ) -> list[TransactionResponse]:
     """Inspect synthetic transactions used as forecast evidence."""
     agent = require_selected_agent(db, agent_id)
@@ -734,7 +734,7 @@ def list_recent_transactions(
 )
 def create_transaction(
     payload: TransactionCreate,
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
 ) -> TransactionResponse:
     """Insert one synthetic transaction for the demo agent."""
     agent = require_agent(db)
@@ -772,6 +772,7 @@ def create_transaction(
 
 @app.get("/cash_reserve_analysis", tags=["monitoring"])
 def cash_reserve_analysis(
+    db: Annotated[Session, Depends(get_db)],
     w: Annotated[
         int,
         Query(
@@ -781,7 +782,6 @@ def cash_reserve_analysis(
         ),
     ] = 15,
     agent_id: int | None = Query(None, description="Agent to inspect. Omit for the demo agent."),
-    db: Session = Depends(get_db),
 ) -> dict:
     """Return shared-cash and provider e-money exhaustion estimates as JSON."""
     agent = require_selected_agent(db, agent_id)
@@ -949,6 +949,7 @@ def infer_monthly_volume(
     tags=["ML inference"],
 )
 def infer_transaction_pattern_from_database(
+    db: Annotated[Session, Depends(get_db)],
     w: Annotated[
         int,
         Query(
@@ -961,7 +962,6 @@ def infer_transaction_pattern_from_database(
         int | None,
         Query(description="Agent to analyse. Omit to use the demo agent."),
     ] = None,
-    db: Session = Depends(get_db),
 ) -> TransactionPatternInferenceResponse:
     """Score recent completed SQLite transactions with the saved Isolation Forest."""
     agent = require_selected_agent(db, agent_id)
@@ -1012,6 +1012,7 @@ def infer_transaction_pattern_from_database(
     tags=["ML inference"],
 )
 def infer_monthly_volume_from_database(
+    db: Annotated[Session, Depends(get_db)],
     event_context: Annotated[
         Literal["normal", "eid"],
         Query(description="Seasonal context for the selected month."),
@@ -1022,7 +1023,6 @@ def infer_monthly_volume_from_database(
         int | None,
         Query(description="Agent to analyse. Omit to use the demo agent."),
     ] = None,
-    db: Session = Depends(get_db),
 ) -> MonthlyVolumeInferenceResponse:
     """Aggregate one month of SQLite data and score it with the seasonal model."""
     agent = require_selected_agent(db, agent_id)
