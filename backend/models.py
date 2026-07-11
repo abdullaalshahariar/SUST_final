@@ -70,6 +70,8 @@ class Alert(Base):
     status: Mapped[str] = mapped_column(String(20), default="open", nullable=False)
     title: Mapped[str] = mapped_column(String(180), nullable=False)
     evidence: Mapped[str] = mapped_column(Text, nullable=False)
+    recipient: Mapped[str] = mapped_column(String(120), nullable=False)
+    owner: Mapped[str] = mapped_column(String(120), nullable=False)
     recommended_action: Mapped[str] = mapped_column(Text, nullable=False)
     confidence: Mapped[str] = mapped_column(String(20), nullable=False)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -160,6 +162,8 @@ class AlertResponse(BaseModel):
     status: AlertStatus
     title: str
     evidence: str
+    recipient: str
+    owner: str
     recommended_action: str
     confidence: str
     note: str | None

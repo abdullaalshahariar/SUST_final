@@ -234,6 +234,8 @@ def create_liquidity_alerts(db: Session, now: datetime) -> list[Alert]:
                 f"{forecast['burn_per_minute']:,.0f} BDT/minute; estimated time to threshold: "
                 f"{minutes:g} minutes."
             ),
+            recipient=f"{provider_label(position.provider_code)} Provider Operations",
+            owner="Sylhet Field Operations",
             recommended_action=(
                 f"Confirm the {provider_label(position.provider_code)} balance and "
                 "arrange support through approved channels. No transfer or conversion is performed."
