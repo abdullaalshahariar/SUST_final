@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, Query, status
@@ -16,7 +17,9 @@ from models import (
     AlertUpdate,
     DemoResetResponse,
     HealthResponse,
+    InferenceTransaction,
     MonthlyVolumeFinding,
+    MonthlyVolumeInferenceRecord,
     MonthlyVolumeInferenceRequest,
     MonthlyVolumeInferenceResponse,
     PositionResponse,
@@ -70,6 +73,23 @@ def require_agent(db: Session) -> Agent:
     return agent
 
 
+def require_selected_agent(db: Session, agent_id: int | None) -> Agent:
+    """Return the requested agent, or the single demo agent when omitted."""
+    if agent_id is None:
+        return require_agent(db)
+    agent = db.get(Agent, agent_id)
+    if agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent {agent_id} was not found.",
+        )
+    return agent
+
+
+def utc_datetime(value: datetime) -> datetime:
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+
 def alert_response(alert: Alert) -> AlertResponse:
     return AlertResponse(
         id=alert.id,
@@ -78,6 +98,8 @@ def alert_response(alert: Alert) -> AlertResponse:
         status=alert.status,
         title=alert.title,
         evidence=alert.evidence,
+        recipient=alert.recipient,
+        owner=alert.owner,
         recommended_action=alert.recommended_action,
         confidence=alert.confidence,
         note=alert.note,
@@ -330,9 +352,9 @@ def infer_transaction_pattern(
                     ),
                 ],
                 recommended_action=(
-                    "Unusual activity detected and  the transactions requires review. "
+                    "Unusual activity detected. The transactions require review. "
                     "This may be normal demand and requires human review before action."
-                    "AI can make mistakes, this is for advisory purposes only."
+                    " AI can make mistakes; this is for advisory purposes only."
                 ),
             )
         )
@@ -342,7 +364,8 @@ def infer_transaction_pattern(
         evaluated_window_count=len(scored),
         unusual_activity=findings,
         message=(
-            f"Found {len(findings)} unusual transaction pattern(s) requiring review. AI can make mistakes, this is for advisory purposes only."
+            f"Found {len(findings)} unusual transaction pattern(s) requiring review. "
+            "AI can make mistakes; this is for advisory purposes only."
             if findings
             else "No unusual short-term transaction pattern was found."
         ),
@@ -427,3 +450,137 @@ def infer_monthly_volume(
             else "No unexpected monthly-volume pattern was found."
         ),
     )
+
+
+@app.get(
+    "/inference/transaction-pattern/database",
+    response_model=TransactionPatternInferenceResponse,
+    tags=["ML inference"],
+)
+def infer_transaction_pattern_from_database(
+    w: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=30,
+            description="Recent database look-back window in minutes.",
+        ),
+    ] = 30,
+    agent_id: Annotated[
+        int | None,
+        Query(description="Agent to analyse. Omit to use the demo agent."),
+    ] = None,
+    db: Session = Depends(get_db),
+) -> TransactionPatternInferenceResponse:
+    """Score recent completed SQLite transactions with the saved Isolation Forest."""
+    agent = require_selected_agent(db, agent_id)
+    now = utc_now()
+    window_start = now - timedelta(minutes=w)
+    database_start = window_start.replace(tzinfo=None)
+    database_end = utc_datetime(now).replace(tzinfo=None)
+    database_transactions = db.scalars(
+        select(Transaction)
+        .where(
+            Transaction.agent_id == agent.id,
+            Transaction.status.in_(("completed", "failed", "pending")),
+            Transaction.event_at >= database_start,
+            Transaction.event_at <= database_end,
+        )
+        .order_by(Transaction.event_at)
+    ).all()
+
+    payload_transactions = [
+        InferenceTransaction(
+            provider_code=transaction.provider_code,
+            event_at=utc_datetime(transaction.event_at),
+            type=transaction.type,
+            amount=transaction.amount,
+            location=transaction.location,
+            status=transaction.status,
+        )
+        for transaction in database_transactions
+        if transaction.type in {"cash_in", "cash_out"}
+        and transaction.status in {"completed", "failed", "pending"}
+    ]
+    if not payload_transactions:
+        return TransactionPatternInferenceResponse(
+            model="isolation_forest",
+            evaluated_window_count=0,
+            unusual_activity=[],
+            message=f"No supported transactions were found for agent {agent.id} in the last {w} minutes.",
+        )
+
+    return infer_transaction_pattern(
+        TransactionPatternInferenceRequest(transactions=payload_transactions)
+    )
+
+
+@app.get(
+    "/inference/monthly-volume/database",
+    response_model=MonthlyVolumeInferenceResponse,
+    tags=["ML inference"],
+)
+def infer_monthly_volume_from_database(
+    event_context: Annotated[
+        Literal["normal", "eid"],
+        Query(description="Seasonal context for the selected month."),
+    ] = "normal",
+    year: Annotated[int | None, Query(ge=2023, le=2100)] = None,
+    month: Annotated[int | None, Query(ge=1, le=12)] = None,
+    agent_id: Annotated[
+        int | None,
+        Query(description="Agent to analyse. Omit to use the demo agent."),
+    ] = None,
+    db: Session = Depends(get_db),
+) -> MonthlyVolumeInferenceResponse:
+    """Aggregate one month of SQLite data and score it with the seasonal model."""
+    agent = require_selected_agent(db, agent_id)
+    now = utc_now()
+    selected_year = year or now.year
+    selected_month = month or now.month
+    month_start = datetime(selected_year, selected_month, 1, tzinfo=timezone.utc)
+    if selected_month == 12:
+        next_month_start = datetime(selected_year + 1, 1, 1, tzinfo=timezone.utc)
+    else:
+        next_month_start = datetime(selected_year, selected_month + 1, 1, tzinfo=timezone.utc)
+
+    database_transactions = db.scalars(
+        select(Transaction)
+        .where(
+            Transaction.agent_id == agent.id,
+            Transaction.status == "completed",
+            Transaction.event_at >= month_start.replace(tzinfo=None),
+            Transaction.event_at < next_month_start.replace(tzinfo=None),
+        )
+        .order_by(Transaction.event_at)
+    ).all()
+    grouped_volumes: dict[tuple[str, str], float] = {}
+    for transaction in database_transactions:
+        key = (transaction.provider_code, transaction.location)
+        grouped_volumes[key] = grouped_volumes.get(key, 0.0) + transaction.amount
+
+    if not grouped_volumes:
+        return MonthlyVolumeInferenceResponse(
+            model="seasonal_random_forest_regressor",
+            evaluated_record_count=0,
+            unusual_activity=[],
+            message=(
+                f"No completed transactions were found for agent {agent.id} in "
+                f"{month_start.strftime('%B %Y')}."
+            ),
+        )
+
+    records = [
+        MonthlyVolumeInferenceRecord(
+            # The model's synthetic history uses agent_01, agent_02, etc.
+            # This mapping keeps the demo-agent category consistent at inference time.
+            agent_id=f"agent_{agent.id:02d}",
+            provider_code=provider_code,
+            location=location,
+            period_start=month_start,
+            event_context=event_context,
+            monthly_volume=volume,
+        )
+        for (provider_code, location), volume in grouped_volumes.items()
+    ]
+    return infer_monthly_volume(MonthlyVolumeInferenceRequest(records=records))

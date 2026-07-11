@@ -62,3 +62,8 @@ CREATE TABLE alerts (
 
 
 now use the function to replace overview with cash_reserve_analysis api what will simply return the json with get request.
+
+read the whole project file and tell me how many of them is properly implemented
+only backend
+
+what kind of recomandation the ml model provides
