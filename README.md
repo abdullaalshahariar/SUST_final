@@ -1,74 +1,44 @@
-# Multi-Provider Agent Liquidity Monitor
+# Multi-Provider Liquidity Monitor
 
-This is a synthetic, advisory-only backend for multi-provider mobile-finance
-agents. It keeps bKash, Nagad, and Rocket balances logically separate while
-showing shared physical cash, predicted liquidity pressure, unusual activity,
-and human-review alert coordination.
+A synthetic, advisory-only decision-support prototype for monitoring an agent's shared physical cash and separate e-money balances across simulated bKash, Nagad, and Rocket providers.
 
-It does not connect to real wallets, access customer credentials, transfer
-money, block users, or make fraud decisions.
+It estimates liquidity pressure, detects selected unusual transaction patterns, identifies unexpected seasonal monthly volume, and keeps alert resolution under human control. The application does not connect to real wallets, move money, block transactions, or make fraud decisions.
 
-## Run the backend
+## Table of contents
 
-```bash
-cd backend
-../venv/bin/uvicorn app:app --reload
-```
+- [Features](#features)
+- [Architecture](#architecture)
+- [Project structure](#project-structure)
+- [Prerequisites](#prerequisites)
+- [Quick start](#quick-start)
+- [Using the API](#using-the-api)
+- [AI and analytics](#ai-and-analytics)
+- [Alert lifecycle](#alert-lifecycle)
+- [Demo scenarios](#demo-scenarios)
+- [Adding photos and screenshots](#adding-photos-and-screenshots)
+- [Current limitations](#current-limitations)
+- [Safety and data note](#safety-and-data-note)
 
-Open Swagger at `http://127.0.0.1:8000/docs`, then call `POST /demo/reset`.
+## Features
+
+- Tracks shared physical cash plus a separate simulated e-money balance for each provider.
+- Forecasts e-money depletion using recent completed cash-in demand.
+- Creates explainable liquidity alerts that a human can acknowledge or resolve with a note.
+- Scores unusual short-term transaction patterns with an Isolation Forest and an evidence gate.
+- Scores unexpected monthly volume with seasonal context, including normal versus Eid periods.
+- Exposes evaluation metrics for the synthetic ML datasets.
+- Includes a static dashboard interface and FastAPI's interactive OpenAPI documentation.
 
 ## Architecture
-
-```text
-SQLite transactions and positions
-        │
-        ├─ deterministic cash-velocity calculation → liquidity alert
-        ├─ Isolation Forest → unusual ten-minute transaction pattern
-        └─ Seasonal Random Forest → unexpected monthly volume
-        │
-FastAPI JSON endpoints → human review and resolution workflow
-```
-
-All data is generated and synthetic. ML models are trained offline from the
-CSV generators in `backend/scripts/` and saved as `.joblib` artifacts. At
-runtime, database inference endpoints score current SQLite data; they do not
-retrain the models automatically.
-
-## Measured metrics
-
-Call `GET /metrics` in Swagger to see the latest values and plain-English
-definitions. The endpoint reads the saved evaluation files produced during
-training.
-
-| Metric | Current result | Meaning |
-|---|---:|---|
-| Transaction-pattern precision | 1.00 | Every flagged injected short-term pattern was a true injected anomaly in this synthetic evaluation. |
-| Transaction-pattern recall | 1.00 | The short-term model detected every injected unusual window in this synthetic evaluation. |
-| Transaction-pattern false-positive rate | 0.00 | No normal ten-minute window was incorrectly flagged in this synthetic evaluation. |
-| Legitimate-surge flag rate | 0.00 | No simulated normal high-demand surge was incorrectly flagged. |
-| Seasonal monthly-volume precision | 1.00 | Every flagged injected monthly-volume anomaly was a true injected anomaly in this synthetic evaluation. |
-| Normal Eid-month flag rate | 0.00 | No normal simulated Eid month was incorrectly flagged. |
-| Seasonal validation MAE | 12,061.77 BDT | Average prediction error on held-out normal synthetic monthly-volume data; lower is better. |
-
-These metrics are not claims of real-world fraud-detection accuracy. They are
-measured only on generated synthetic scenarios and are used to demonstrate
-model behaviour, false-positive awareness, and seasonal context handling.
-
-## Main demonstration endpoints
-
-```text
-POST /demo/reset
-POST /demo/simulate-stale-balance?provider_code=nagad_sim
-GET  /positions
-GET  /agents/{agent_id}
-GET  /agents
-GET  /cash_reserve_analysis?w=15
-GET  /alerts
-PATCH /alerts/{alert_id}
-GET  /inference/transaction-pattern/database?agent_id=2&w=30
-GET  /inference/monthly-volume/database?agent_id=3&year=2026&month=7&event_context=normal
-GET  /metrics
-GET  /provider-coordination
-POST /provider-coordination/proposals
-PATCH /provider-coordination/{case_id}
-```
+### Main Interfaces
+![[docs/images/Interfaces.png]]
+### Backend Architecture
+![[docs/images/Backend_architecture.png]]
+### Data Flow
+![[docs/images/code_data_flow.png]]
+### AI Services
+![[docs/images/ai_service_analysis.png]]
+### Transaction Liquidity
+![[docs/images/Transaction Liquidity.png]]
+### Alert-condition and human-review flow
+![[docs/images/Alert-condition and human-review flow.png]]
