@@ -31,14 +31,14 @@ It estimates liquidity pressure, detects selected unusual transaction patterns, 
 
 ## Architecture
 ### Main Interfaces
-![[docs/images/Interfaces.png]]
+![](docs/images/Interfaces.png)
 ### Backend Architecture
-![[docs/images/Backend_architecture.png]]
+![](docs/images/Backend_architecture.png)
 ### Data Flow
-![[docs/images/code_data_flow.png]]
+![](docs/images/code_data_flow.png)
 ### AI Services
-![[docs/images/ai_service_analysis.png]]
+![](docs/images/ai_service_analysis.png)
 ### Transaction Liquidity
-![[docs/images/Transaction Liquidity.png]]
+![](docs/images/Transaction Liquidity.png)
 ### Alert-condition and human-review flow
-![[docs/images/Alert-condition and human-review flow.png]]
+![](docs/images/Alert-condition and human-review flow.png)
