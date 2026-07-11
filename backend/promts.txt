@@ -1,3 +1,1 @@
-providers.code, has been repeated 4 times. maybe can be just a contsnt?
-
-Use "Annotated" type hints for FastAPI dependency injection
+maybe declare constant for agents.id too in models.py?

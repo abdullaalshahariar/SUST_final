@@ -8,6 +8,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 PROVIDER_CODE_FOREIGN_KEY = "providers.code"
+AGENT_ID_FOREIGN_KEY = "agents.id"
 
 
 def utc_now() -> datetime:
@@ -40,7 +41,7 @@ class ProviderPosition(Base):
     __tablename__ = "provider_positions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), nullable=False)
+    agent_id: Mapped[int] = mapped_column(ForeignKey(AGENT_ID_FOREIGN_KEY), nullable=False)
     provider_code: Mapped[str] = mapped_column(ForeignKey(PROVIDER_CODE_FOREIGN_KEY), nullable=False)
     balance: Mapped[float] = mapped_column(Float, nullable=False)
     safety_threshold: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -54,7 +55,7 @@ class Transaction(Base):
     __tablename__ = "transactions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), nullable=False)
+    agent_id: Mapped[int] = mapped_column(ForeignKey(AGENT_ID_FOREIGN_KEY), nullable=False)
     provider_code: Mapped[str] = mapped_column(ForeignKey(PROVIDER_CODE_FOREIGN_KEY), nullable=False)
     event_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     type: Mapped[str] = mapped_column(String(20), nullable=False)  # cash_in or cash_out
@@ -67,7 +68,7 @@ class Alert(Base):
     __tablename__ = "alerts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), nullable=False)
+    agent_id: Mapped[int] = mapped_column(ForeignKey(AGENT_ID_FOREIGN_KEY), nullable=False)
     provider_code: Mapped[str] = mapped_column(ForeignKey(PROVIDER_CODE_FOREIGN_KEY), nullable=False)
     type: Mapped[str] = mapped_column(String(30), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="open", nullable=False)
@@ -96,8 +97,8 @@ class SupportCoordination(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     provider_code: Mapped[str] = mapped_column(ForeignKey(PROVIDER_CODE_FOREIGN_KEY), nullable=False)
-    requester_agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), nullable=False)
-    supporting_agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), nullable=False)
+    requester_agent_id: Mapped[int] = mapped_column(ForeignKey(AGENT_ID_FOREIGN_KEY), nullable=False)
+    supporting_agent_id: Mapped[int] = mapped_column(ForeignKey(AGENT_ID_FOREIGN_KEY), nullable=False)
     alert_id: Mapped[int | None] = mapped_column(ForeignKey("alerts.id"), nullable=True)
     cash_amount: Mapped[float] = mapped_column(Float, nullable=False)
     e_money_amount: Mapped[float] = mapped_column(Float, nullable=False)
