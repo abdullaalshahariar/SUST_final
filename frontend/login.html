@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in | AgentFlow</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="login.css">
+</head>
+<body>
+  <main class="page-shell">
+    <section class="intro-panel" aria-label="About the prototype">
+      <a class="brand" href="login.html" aria-label="AgentFlow login">
+        <span class="brand-mark">A</span>
+        <span>AgentFlow</span>
+      </a>
+
+      <div class="intro-copy">
+        <p class="eyebrow">SUST CSE Carnival 2026</p>
+        <h1>Clear liquidity decisions,<br>with human review.</h1>
+        <p class="intro-text">A synthetic decision-support prototype for multi-provider mobile-finance agents.</p>
+      </div>
+
+      <ul class="guardrail-list">
+        <li><span>✓</span> Provider balances remain logically separate</li>
+        <li><span>✓</span> All data is simulated and advisory only</li>
+        <li><span>✓</span> No money movement or account action is performed</li>
+      </ul>
+
+      <p class="footer-note">Demo prototype · Not for production use</p>
+    </section>
+
+    <section class="login-panel" aria-labelledby="sign-in-title">
+      <div class="login-card">
+        <div class="backend-status" id="backendStatus" role="status">
+          <span class="status-dot checking"></span>
+          <span>Checking local API connection…</span>
+        </div>
+
+        <div class="form-heading">
+          <p class="eyebrow accent">DEMO ACCESS</p>
+          <h2 id="sign-in-title">Choose your workspace</h2>
+          <p>Select a role to open the appropriate dashboard.</p>
+        </div>
+
+        <form id="loginForm">
+          <fieldset>
+            <legend>Your role</legend>
+            <div class="role-grid">
+              <label class="role-option selected">
+                <input type="radio" name="role" value="agent" checked>
+                <span class="role-icon" aria-hidden="true">⌂</span>
+                <span class="role-content">
+                  <strong>Agent</strong>
+                  <small>Monitor your cash drawer and provider balances</small>
+                </span>
+                <span class="choice-indicator" aria-hidden="true"></span>
+              </label>
+
+              <label class="role-option">
+                <input type="radio" name="role" value="provider">
+                <span class="role-icon" aria-hidden="true">◈</span>
+                <span class="role-content">
+                  <strong>Provider operations</strong>
+                  <small>Review agent risk and coordination alerts</small>
+                </span>
+                <span class="choice-indicator" aria-hidden="true"></span>
+              </label>
+            </div>
+          </fieldset>
+
+          <div class="agent-field" id="agentField">
+            <label for="agentSelect">Select agent</label>
+            <select id="agentSelect" name="agent_id">
+              <option value="">Loading agents from the database…</option>
+            </select>
+            <p>Agent selection is stored only for this browser session.</p>
+          </div>
+
+          <div class="agent-field" id="providerField" hidden>
+            <label for="providerSelect">Select provider workspace</label>
+            <select id="providerSelect" name="provider_code">
+              <option value="">Loading providers from the database…</option>
+            </select>
+            <p>This workspace displays only the selected provider's routed alerts and e-money positions.</p>
+          </div>
+
+          <p class="form-error" id="formError" role="alert" hidden></p>
+          <button class="login-button" id="loginButton" type="submit" disabled>
+            <span>Open agent dashboard</span><span aria-hidden="true">→</span>
+          </button>
+        </form>
+
+        <p class="privacy-note">No password, PIN, OTP, or real customer information is requested or stored.</p>
+      </div>
+    </section>
+  </main>
+  <script src="login.js"></script>
+</body>
+</html>

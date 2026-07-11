@@ -67,3 +67,9 @@ read the whole project file and tell me how many of them is properly implemented
 only backend
 
 what kind of recomandation the ml model provides
+
+Failure, uncertainty, false positives shown⚠️ PartialStale data produces low confidence; model metrics include false-positive checks. There is no clean Swagger demo endpoint for stale/conflicting data.
+is this implemented
+
+Failure, uncertainty, false positives shown⚠️ PartialStale data produces low confidence; model metrics include false-positive checks. There is no clean Swagger demo endpoint for stale/conflicting data.
+is this implemented
