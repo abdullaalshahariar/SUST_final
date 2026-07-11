@@ -3,3 +3,62 @@ first every the problem ststement in easy term with proper example
 with many scenerio
 
 how can solve the scenario 1 explain that
+
+write me a function in tools.py that will calulate cash velocity.it will read from database and it will return time to exausted for each type of cash. for that it needs to select an window. for now the window size is 30 (represented by w) maximum. then it will return a dictionary. this is the schema for database "CREATE TABLE providers (
+        code VARCHAR(30) NOT NULL,
+        display_name VARCHAR(80) NOT NULL,
+        PRIMARY KEY (code)
+);
+CREATE TABLE agents (
+        id INTEGER NOT NULL,
+        name VARCHAR(100) NOT NULL,
+        area VARCHAR(100) NOT NULL,
+        shared_cash FLOAT NOT NULL,
+        cash_threshold INTEGER NOT NULL,
+        PRIMARY KEY (id)
+);
+CREATE TABLE provider_positions (
+        id INTEGER NOT NULL,
+        agent_id INTEGER NOT NULL,
+        provider_code VARCHAR(30) NOT NULL,
+        balance FLOAT NOT NULL,
+        safety_threshold INTEGER NOT NULL,
+        recorded_at DATETIME NOT NULL,
+        quality_status VARCHAR(20) NOT NULL,
+        PRIMARY KEY (id),
+        FOREIGN KEY(agent_id) REFERENCES agents (id),
+        FOREIGN KEY(provider_code) REFERENCES providers (code)
+);
+CREATE TABLE transactions (
+        id INTEGER NOT NULL,
+        agent_id INTEGER NOT NULL,
+        provider_code VARCHAR(30) NOT NULL,
+        event_at DATETIME NOT NULL,
+        type VARCHAR(20) NOT NULL,
+        amount INTEGER NOT NULL,
+        location VARCHAR(150) NOT NULL,
+        status VARCHAR(30) NOT NULL,
+        PRIMARY KEY (id),
+        FOREIGN KEY(agent_id) REFERENCES agents (id),
+        FOREIGN KEY(provider_code) REFERENCES providers (code)
+);
+CREATE TABLE alerts (
+        id INTEGER NOT NULL,
+        agent_id INTEGER NOT NULL,
+        provider_code VARCHAR(30) NOT NULL,
+        type VARCHAR(30) NOT NULL,
+        status VARCHAR(20) NOT NULL,
+        title VARCHAR(180) NOT NULL,
+        evidence TEXT NOT NULL,
+        recommended_action TEXT NOT NULL,
+        confidence VARCHAR(20) NOT NULL,
+        note TEXT,
+        created_at DATETIME NOT NULL,
+        updated_at DATETIME NOT NULL,
+        PRIMARY KEY (id),
+        FOREIGN KEY(agent_id) REFERENCES agents (id),
+        FOREIGN KEY(provider_code) REFERENCES providers (code)
+);"
+
+
+now use the function to replace overview with cash_reserve_analysis api what will simply return the json with get request.

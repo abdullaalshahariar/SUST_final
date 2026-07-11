@@ -19,7 +19,6 @@ from models import (
     MonthlyVolumeFinding,
     MonthlyVolumeInferenceRequest,
     MonthlyVolumeInferenceResponse,
-    OverviewResponse,
     PositionResponse,
     Provider,
     ProviderResponse,
@@ -34,7 +33,7 @@ from models import (
 )
 from ml import build_feature_windows, load_model_artifact, score_feature_windows
 from seasonal_ml import load_seasonal_model_artifact, score_monthly_history
-from tools import calculate_liquidity_forecast
+from tools import calculate_cash_velocity, calculate_liquidity_forecast
 
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -259,16 +258,21 @@ def create_transaction(
     )
 
 
-@app.get("/overview", response_model=OverviewResponse, tags=["monitoring"])
-def overview(db: Session = Depends(get_db)) -> OverviewResponse:
-    """Return all Scenario 1 API data in one response for quick Swagger inspection."""
+@app.get("/cash_reserve_analysis", tags=["monitoring"])
+def cash_reserve_analysis(
+    w: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=30,
+            description="Look-back window in minutes for cash-velocity analysis.",
+        ),
+    ] = 15,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Return shared-cash and provider e-money exhaustion estimates as JSON."""
     agent = require_agent(db)
-    return OverviewResponse(
-        agent=AgentResponse.model_validate(agent),
-        positions=list_positions(db),
-        alerts=list_alerts(db=db),
-        recent_transactions=list_recent_transactions(db=db),
-    )
+    return calculate_cash_velocity(db=db, agent_id=agent.id, w=w)
 
 
 @app.post(
