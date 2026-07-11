@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated
 
+import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,6 +16,9 @@ from models import (
     AlertUpdate,
     DemoResetResponse,
     HealthResponse,
+    MonthlyVolumeFinding,
+    MonthlyVolumeInferenceRequest,
+    MonthlyVolumeInferenceResponse,
     OverviewResponse,
     PositionResponse,
     Provider,
@@ -21,10 +26,21 @@ from models import (
     ProviderPosition,
     Transaction,
     TransactionCreate,
+    TransactionPatternFinding,
+    TransactionPatternInferenceRequest,
+    TransactionPatternInferenceResponse,
     TransactionResponse,
     utc_now,
 )
+from ml import build_feature_windows, load_model_artifact, score_feature_windows
+from seasonal_ml import load_seasonal_model_artifact, score_monthly_history
 from tools import calculate_liquidity_forecast
+
+
+BACKEND_DIR = Path(__file__).resolve().parent
+TRANSACTION_MODEL_PATH = BACKEND_DIR / "scripts" / "isolation_forest.joblib"
+SEASONAL_MODEL_PATH = BACKEND_DIR / "scripts" / "seasonal_volume_model.joblib"
+SEASONAL_BASE_YEAR = 2023
 
 
 @asynccontextmanager
@@ -252,4 +268,158 @@ def overview(db: Session = Depends(get_db)) -> OverviewResponse:
         positions=list_positions(db),
         alerts=list_alerts(db=db),
         recent_transactions=list_recent_transactions(db=db),
+    )
+
+
+@app.post(
+    "/inference/transaction-pattern",
+    response_model=TransactionPatternInferenceResponse,
+    tags=["ML inference"],
+)
+def infer_transaction_pattern(
+    payload: TransactionPatternInferenceRequest,
+) -> TransactionPatternInferenceResponse:
+    """Return unusual ten-minute cash-out patterns and the evidence for each."""
+    try:
+        artifact = load_model_artifact(TRANSACTION_MODEL_PATH)
+        transactions = pd.DataFrame(
+            [transaction.model_dump(mode="json") for transaction in payload.transactions]
+        )
+        windows = build_feature_windows(transactions)
+        scored = score_feature_windows(windows, artifact)
+    except (FileNotFoundError, ValueError, OSError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Transaction-pattern model is unavailable: {error}",
+        ) from error
+
+    gate = artifact.get("review_gate", {})
+    minimum_cash_out_count = int(gate.get("minimum_cash_out_count", 0))
+    minimum_similarity = float(gate.get("minimum_similarity_ratio", 0.0))
+    findings: list[TransactionPatternFinding] = []
+    for _, window in scored[scored["requires_review"]].iterrows():
+        similarity_percent = round(float(window["cash_out_similarity_ratio"]) * 100)
+        findings.append(
+            TransactionPatternFinding(
+                anomaly_type="short_term_transaction_pattern",
+                provider_code=str(window["provider_code"]),
+                location=str(window["location"]),
+                window_start=window["window_start"].to_pydatetime(),
+                anomaly_score=round(float(window["anomaly_score"]), 4),
+                transaction_count=int(window["transaction_count"]),
+                cash_out_count=int(window["cash_out_count"]),
+                cash_out_similarity_ratio=round(
+                    float(window["cash_out_similarity_ratio"]), 4
+                ),
+                reasons=[
+                    (
+                        f"The Isolation Forest score {float(window['anomaly_score']):.4f} "
+                        f"exceeds the threshold {float(artifact['threshold']):.4f}."
+                    ),
+                    (
+                        f"{int(window['cash_out_count'])} cash-outs occurred in one "
+                        f"ten-minute window (minimum: {minimum_cash_out_count})."
+                    ),
+                    (
+                        f"{similarity_percent}% of cash-out amounts were similar "
+                        f"(minimum: {round(minimum_similarity * 100)}%)."
+                    ),
+                ],
+                recommended_action=(
+                    "Unusual activity detected and  the transactions requires review. "
+                    "This may be normal demand and requires human review before action."
+                    "AI can make mistakes, this is for advisory purposes only."
+                ),
+            )
+        )
+
+    return TransactionPatternInferenceResponse(
+        model="isolation_forest",
+        evaluated_window_count=len(scored),
+        unusual_activity=findings,
+        message=(
+            f"Found {len(findings)} unusual transaction pattern(s) requiring review. AI can make mistakes, this is for advisory purposes only."
+            if findings
+            else "No unusual short-term transaction pattern was found."
+        ),
+    )
+
+
+@app.post(
+    "/inference/monthly-volume",
+    response_model=MonthlyVolumeInferenceResponse,
+    tags=["ML inference"],
+)
+def infer_monthly_volume(
+    payload: MonthlyVolumeInferenceRequest,
+) -> MonthlyVolumeInferenceResponse:
+    """Return monthly volumes far above the agent's seasonal expectation."""
+    try:
+        artifact = load_seasonal_model_artifact(SEASONAL_MODEL_PATH)
+        records = []
+        for record in payload.records:
+            period = record.period_start
+            records.append(
+                {
+                    "period_start": period.isoformat(),
+                    "agent_id": record.agent_id,
+                    "provider_code": record.provider_code,
+                    "location": record.location,
+                    "event_context": record.event_context,
+                    "month_number": period.month,
+                    "year_index": max(0, period.year - SEASONAL_BASE_YEAR),
+                    "monthly_volume": record.monthly_volume,
+                }
+            )
+        scored = score_monthly_history(pd.DataFrame(records), artifact)
+    except (FileNotFoundError, ValueError, OSError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Monthly-volume model is unavailable: {error}",
+        ) from error
+
+    ratio_threshold = float(artifact["residual_ratio_threshold"])
+    findings: list[MonthlyVolumeFinding] = []
+    for _, row in scored[scored["requires_review"]].iterrows():
+        findings.append(
+            MonthlyVolumeFinding(
+                anomaly_type="unexpected_monthly_volume",
+                agent_id=str(row["agent_id"]),
+                provider_code=str(row["provider_code"]),
+                location=str(row["location"]),
+                period_start=row["period_start"].to_pydatetime(),
+                event_context=str(row["event_context"]),
+                actual_monthly_volume=round(float(row["monthly_volume"]), 2),
+                expected_monthly_volume=round(
+                    float(row["expected_monthly_volume"]), 2
+                ),
+                volume_ratio=round(float(row["volume_ratio"]), 2),
+                reasons=[
+                    (
+                        f"Actual volume is {float(row['volume_ratio']):.2f}x the "
+                        f"expected {row['event_context']} volume for this agent/provider."
+                    ),
+                    (
+                        f"Actual monthly volume: {float(row['monthly_volume']):,.0f} BDT; "
+                        f"expected volume: {float(row['expected_monthly_volume']):,.0f} BDT."
+                    ),
+                    f"The review threshold is {ratio_threshold:.2f}x expected volume.",
+                ],
+                recommended_action=(
+                    "Confirm the operational context with the agent. The seasonal "
+                    "context was considered, but the volume is still unusually high."
+                ),
+            )
+        )
+
+    return MonthlyVolumeInferenceResponse(
+        model="seasonal_random_forest_regressor",
+        evaluated_record_count=len(scored),
+        unusual_activity=findings,
+        message=(
+            f"Found {len(findings)} unexpected monthly-volume pattern(s) requiring review."
+            f" AI can make mistakes, this is for advisory purposes only."
+            if findings
+            else "No unexpected monthly-volume pattern was found."
+        ),
     )

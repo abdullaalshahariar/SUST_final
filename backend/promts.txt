@@ -1,1 +1,9 @@
 we want to simulate real time transactions. so, mayebe make a transactions POST end point. that takes same exact things the GET transaction end point returns and write it to database
+
+what if i want to detecd different type of anomoly
+for example if a agent does transsaction of 1lakh every month for a long time and in a rush month like eid session he does transaction of 5 lakh
+so make a model to handel different different situation
+
+all i need to know what type of unusal activity it is and why it was flagged. so, i do not need reset endpoint.just end point for inference. 2 model, 2 inference end point.
+
+why did you removed previous end points. keep them unchanged. and then implement the new one. to undo removal of previous end point use git restore . and then implement your end ppoints

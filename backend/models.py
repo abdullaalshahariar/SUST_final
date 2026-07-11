@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
@@ -188,6 +189,83 @@ class TransactionCreate(BaseModel):
     event_at: datetime
     location: str = Field(min_length=1, max_length=150)
     status: str = Field(min_length=1, max_length=30)
+
+
+# Stateless ML inference schemas. Requests are analysed in memory only and are
+# never inserted into the SQLite database.
+class InferenceTransaction(BaseModel):
+    provider_code: str = Field(min_length=1, max_length=30)
+    event_at: datetime
+    type: Literal["cash_in", "cash_out"]
+    amount: int = Field(gt=0)
+    location: str = Field(min_length=1, max_length=150)
+    status: Literal["completed", "failed", "pending"]
+
+
+class TransactionPatternInferenceRequest(BaseModel):
+    transactions: list[InferenceTransaction] = Field(
+        min_length=1,
+        max_length=10_000,
+        description="Transactions to analyse. They are scored but never stored.",
+    )
+
+
+class TransactionPatternFinding(BaseModel):
+    anomaly_type: Literal["short_term_transaction_pattern"]
+    provider_code: str
+    location: str
+    window_start: datetime
+    anomaly_score: float
+    transaction_count: int
+    cash_out_count: int
+    cash_out_similarity_ratio: float
+    reasons: list[str]
+    recommended_action: str
+
+
+class TransactionPatternInferenceResponse(BaseModel):
+    model: Literal["isolation_forest"]
+    evaluated_window_count: int
+    unusual_activity: list[TransactionPatternFinding]
+    message: str
+
+
+class MonthlyVolumeInferenceRecord(BaseModel):
+    agent_id: str = Field(min_length=1, max_length=100)
+    provider_code: str = Field(min_length=1, max_length=30)
+    location: str = Field(min_length=1, max_length=150)
+    period_start: datetime
+    event_context: Literal["normal", "eid"]
+    monthly_volume: float = Field(gt=0)
+
+
+class MonthlyVolumeInferenceRequest(BaseModel):
+    records: list[MonthlyVolumeInferenceRecord] = Field(
+        min_length=1,
+        max_length=5_000,
+        description="Monthly volumes to score. They are never stored.",
+    )
+
+
+class MonthlyVolumeFinding(BaseModel):
+    anomaly_type: Literal["unexpected_monthly_volume"]
+    agent_id: str
+    provider_code: str
+    location: str
+    period_start: datetime
+    event_context: Literal["normal", "eid"]
+    actual_monthly_volume: float
+    expected_monthly_volume: float
+    volume_ratio: float
+    reasons: list[str]
+    recommended_action: str
+
+
+class MonthlyVolumeInferenceResponse(BaseModel):
+    model: Literal["seasonal_random_forest_regressor"]
+    evaluated_record_count: int
+    unusual_activity: list[MonthlyVolumeFinding]
+    message: str
 
 
 class OverviewResponse(BaseModel):
