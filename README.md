@@ -39,6 +39,137 @@ It estimates liquidity pressure, detects selected unusual transaction patterns, 
 ### AI Services
 ![](docs/images/ai_service_analysis.png)
 ### Transaction Liquidity
-![](docs/images/Transaction Liquidity.png)
+![](docs/images/Transaction_Liquidity.png)
 ### Alert-condition and human-review flow
-![](docs/images/Alert-condition and human-review flow.png)
+![](docs/images/Alert-condition_and_human-review flow.png)
+
+## Project Structure
+```
+SUST_final/
+├── backend/
+│   ├── app.py                 # FastAPI routes
+│   ├── db.py                  # SQLite setup and synthetic data seeding
+│   ├── models.py              # SQLAlchemy models and Pydantic schemas
+│   ├── tools.py               # Liquidity forecast and alert logic
+│   ├── ml.py                  # Short-term transaction-pattern scoring
+│   ├── seasonal_ml.py         # Seasonal monthly-volume scoring
+│   ├── scripts/               # Synthetic data, trained models, and metrics
+│   └── data/mvp.db            # Local generated SQLite database
+├── frontend/
+│   ├── index.html             # Static dashboard
+│   ├── style.css
+│   └── script.js              # Current mock dashboard data and rendering
+├── docs/
+│   └── images/                # Put README screenshots and diagrams here
+├── plan.md                    # Original project plan
+└── README.md
+```
+
+## Prerequisites
+
+- Python 3.10 or newer
+- `pip`
+- A modern web browser for the dashboard
+
+Create and activate a virtual environment from the repository root.
+
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   ```
+
+2. Install the backend dependencies.
+
+   ```bash
+   pip install -r backend/requirements.txt
+   ```
+
+3. Start the API.
+
+   ```bash
+   uvicorn app:app --app-dir backend --reload
+   ```
+
+4. Open the interactive API documentation at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
+
+5. Seed the deterministic synthetic demo by calling `POST /demo/reset` in Swagger UI, or run:
+
+   ```bash
+   curl -X POST http://127.0.0.1:8000/demo/reset
+   ```
+
+6. Open `frontend/index.html` in a browser to view the current static dashboard.
+
+## Using the API
+
+| Goal                              | Endpoint                         | Method  |
+| --------------------------------- | -------------------------------- | ------- |
+| Confirm the service is running    | `/health`                        | `GET`   |
+| Rebuild synthetic demo data       | `/demo/reset`                    | `POST`  |
+| Simulate a stale provider balance | `/demo/simulate-stale-balance`   | `POST`  |
+| View providers                    | `/providers`                     | `GET`   |
+| View positions and forecasts      | `/positions`                     | `GET`   |
+| View active alerts                | `/alerts`                        | `GET`   |
+| Acknowledge or resolve an alert   | `/alerts/{alert_id}`             | `PATCH` |
+| View recent transactions          | `/transactions`                  | `GET`   |
+| Add a synthetic transaction       | `/transactions`                  | `POST`  |
+| Analyse cash reserve velocity     | `/cash_reserve_analysis?w=15`    | `GET`   |
+| Score transaction patterns        | `/inference/transaction-pattern` | `POST`  |
+| Score monthly-volume records      | `/inference/monthly-volume`      | `POST`  |
+| Retrieve synthetic model metrics  | `/metrics`                       | `GET`   |
+
+### Example: inspect liquidity
+
+```bash
+curl http://127.0.0.1:8000/positions
+curl 'http://127.0.0.1:8000/cash_reserve_analysis?w=15'
+```
+
+### Example: resolve an alert
+
+Resolution always needs a human review note.
+
+```bash
+curl -X PATCH http://127.0.0.1:8000/alerts/1 \
+  -H 'Content-Type: application/json' \
+  -d '{"status":"resolved","note":"Provider balance was confirmed and operational support arranged."}'
+```
+I and analytics
+
+### Liquidity forecast
+
+For each provider, the service uses completed cash-in transactions from the latest 15 minutes:
+
+```text
+burn rate per minute = recent cash-in total / 15
+minutes to threshold = (balance - safety threshold) / burn rate
+```
+
+If the position is stale or more than 15 minutes old, no depletion estimate is returned. Instead, the API returns a low-confidence result and asks for balance confirmation.
+
+### Short-term transaction pattern analysis
+
+The transaction-pattern service groups activity by provider, location, and ten-minute window. It uses an Isolation Forest plus an evidence gate based on repeated cash-outs and similar cash-out amounts. A result means **requires human review**; it is not a fraud conclusion.
+
+### Seasonal monthly-volume analysis
+
+The monthly-volume service uses a Random Forest Regressor to estimate expected volume for an agent, provider, location, month, year index, and seasonal context (`normal` or `eid`). It only flags volumes far above the expected contextual baseline.
+
+## Demo scenarios
+
+After `POST /demo/reset`, the local database contains synthetic examples for demonstration:
+
+1. **Liquidity pressure:** the first agent has sustained Nagad cash-in demand that causes a near-threshold e-money forecast and a liquidity alert.
+2. **Short-term anomaly:** the second agent has a ten-minute burst of similarly sized cash-outs for transaction-pattern review.
+3. **Unexpected monthly volume:** the third agent has an unusually high current-month bKash volume for seasonal analysis.
+
+
+## Current limitations
+
+- All providers, balances, transactions, and model results are synthetic.
+- ML metrics are offline results from generated data, not proof of real-world performance.
+
+## Safety and data note
+
+This prototype is for demonstration and operational decision support only. Treat all forecasts and ML outputs as advisory signals that require human verification. Do not use it to make fraud determinations or to store customer credentials, PINs, OTPs, or other sensitive personal data.
+
