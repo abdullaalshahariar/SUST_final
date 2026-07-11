@@ -20,6 +20,7 @@ from models import (
     ProviderResponse,
     ProviderPosition,
     Transaction,
+    TransactionCreate,
     TransactionResponse,
     utc_now,
 )
@@ -197,6 +198,49 @@ def list_recent_transactions(
         )
         for transaction in transactions
     ]
+
+
+@app.post(
+    "/transactions",
+    response_model=TransactionResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["monitoring"],
+)
+def create_transaction(
+    payload: TransactionCreate,
+    db: Session = Depends(get_db),
+) -> TransactionResponse:
+    """Insert one synthetic transaction for the demo agent."""
+    agent = require_agent(db)
+    provider = db.get(Provider, payload.provider_code)
+    if provider is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Provider not found.",
+        )
+
+    transaction = Transaction(
+        agent_id=agent.id,
+        provider_code=payload.provider_code,
+        event_at=payload.event_at,
+        type=payload.type,
+        amount=payload.amount,
+        location=payload.location,
+        status=payload.status,
+    )
+    db.add(transaction)
+    db.commit()
+    db.refresh(transaction)
+
+    return TransactionResponse(
+        id=transaction.id,
+        provider_code=transaction.provider_code,
+        type=transaction.type,
+        amount=transaction.amount,
+        event_at=transaction.event_at,
+        location=transaction.location,
+        status=transaction.status,
+    )
 
 
 @app.get("/overview", response_model=OverviewResponse, tags=["monitoring"])
