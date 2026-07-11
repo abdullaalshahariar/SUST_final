@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent workspace | AgentFlow</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="agent.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="agent_dashboard.html"><span class="brand-mark">A</span><span>AgentFlow</span></a>
+    <div class="topbar-actions">
+      <span class="api-status" id="apiStatus"><i></i> Loading live data…</span>
+      <button class="secondary-button" id="refreshButton" type="button">↻ Refresh</button>
+      <button class="profile-button" id="signOutButton" type="button" title="Return to workspace selection">Sign out</button>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">AGENT WORKSPACE · SYNTHETIC DEMO</p>
+        <h1 id="agentName">Loading agent workspace…</h1>
+        <p id="agentMeta">Connecting to the local decision-support API.</p>
+      </div>
+      <div class="hero-actions">
+        <button class="secondary-button" id="resetDemoButton" type="button">Reset demo data (clears changes)</button>
+        <a class="secondary-button metrics-link" href="#metricsSection">View model metrics</a>
+      </div>
+    </section>
+
+    <section class="notice safety-notice">
+      <span>◈</span><p><strong>Advisory only.</strong> All data is synthetic. Provider balances remain separate; this dashboard never transfers money, blocks accounts, or declares fraud.</p>
+    </section>
+
+    <section class="toolbar" aria-label="Dashboard filters">
+      <label>Provider
+        <select id="providerFilter"><option value="all">All providers</option></select>
+      </label>
+      <label>Cash-velocity window
+        <select id="windowFilter"><option value="15">Last 15 minutes</option><option value="30">Last 30 minutes</option></select>
+      </label>
+      <label>Alert status
+        <select id="alertFilter"><option value="all">All statuses</option><option value="open">Open</option><option value="acknowledged">Acknowledged</option><option value="resolved">Resolved</option></select>
+      </label>
+      <span class="updated-at" id="updatedAt">Not refreshed yet</span>
+    </section>
+
+    <div class="error-banner" id="errorBanner" hidden role="alert"></div>
+
+    <section class="summary-grid" aria-label="Liquidity summary">
+      <article class="summary-card cash-card"><span class="card-label">Shared physical cash</span><strong id="sharedCash">—</strong><small id="sharedCashHint">Loading cash-reserve analysis…</small></article>
+      <article class="summary-card"><span class="card-label">Provider e-money</span><strong id="totalEmoney">—</strong><small id="emoneyHint">Across separate provider wallets</small></article>
+      <article class="summary-card"><span class="card-label">Active alerts</span><strong id="activeAlerts">—</strong><small id="alertsHint">Requiring human review</small></article>
+      <article class="summary-card"><span class="card-label">Data confidence</span><strong id="confidenceSummary">—</strong><small id="confidenceHint">Checking provider feed freshness</small></article>
+    </section>
+
+    <section class="section-card">
+      <div class="section-heading"><div><p class="eyebrow">LIQUIDITY POSITION</p><h2>Shared cash and provider-specific balances</h2></div><span class="live-tag">LIVE API</span></div>
+      <div class="provider-grid" id="providerGrid" aria-live="polite"><div class="loading-card">Loading provider positions…</div></div>
+      <p class="boundary-copy">Provider e-money balances are displayed individually. A healthy total does not mean every provider can meet demand.</p>
+    </section>
+
+    <section class="two-column">
+      <section class="section-card">
+        <div class="section-heading"><div><p class="eyebrow">FORWARD LOOK</p><h2>Cash-reserve analysis</h2></div><span id="velocityCaption" class="subtle-label">—</span></div>
+        <div id="reserveAnalysis" class="reserve-list"><div class="loading-card">Calculating velocity…</div></div>
+        <p class="muted-note">Time estimates are only shown when recent completed transaction data indicates a balance is decreasing.</p>
+      </section>
+      <section class="section-card">
+        <div class="section-heading"><div><p class="eyebrow">DATA QUALITY</p><h2>Uncertainty and safe fallback</h2></div></div>
+        <div id="qualityPanel" class="quality-panel"><div class="loading-card">Checking data quality…</div></div>
+      </section>
+    </section>
+
+    <section class="section-card">
+      <div class="section-heading"><div><p class="eyebrow">HUMAN REVIEW WORKFLOW</p><h2>Alerts and coordination</h2></div><span id="alertTotal" class="counter">0</span></div>
+      <div id="alertList" class="alert-list"><div class="loading-card">Loading alerts…</div></div>
+    </section>
+
+    <section class="two-column anomaly-columns">
+      <section class="section-card">
+        <div class="section-heading"><div><p class="eyebrow">ISOLATION FOREST</p><h2>Short-term unusual activity</h2></div><button class="text-button" id="rerunPatternButton" type="button">Run again</button></div>
+        <div id="patternPanel" class="anomaly-panel"><div class="loading-card">Scoring recent transactions…</div></div>
+      </section>
+      <section class="section-card">
+        <div class="section-heading"><div><p class="eyebrow">SEASONAL MODEL</p><h2>Unexpected monthly volume</h2></div></div>
+        <div class="model-controls"><label>Context <select id="eventContext"><option value="normal">Normal month</option><option value="eid">Eid period</option></select></label><button class="text-button" id="rerunMonthlyButton" type="button">Analyse</button></div>
+        <div id="monthlyPanel" class="anomaly-panel"><div class="loading-card">Scoring monthly activity…</div></div>
+      </section>
+    </section>
+
+    <section class="section-card" id="metricsSection">
+      <div class="section-heading"><div><p class="eyebrow">API EVALUATION</p><h2>Model checks and false-positive awareness</h2></div><span class="subtle-label">Synthetic evaluation only</span></div>
+      <div class="metrics-grid" id="metricsGrid"><div class="loading-card">Loading saved model metrics…</div></div>
+      <p class="muted-note" id="metricsCaveat"></p>
+    </section>
+
+    <section class="section-card">
+      <div class="section-heading"><div><p class="eyebrow">RECENT ACTIVITY</p><h2>Latest synthetic transactions</h2></div></div>
+      <div class="table-wrap"><table><thead><tr><th>Time</th><th>Provider</th><th>Type</th><th>Amount</th><th>Location</th><th>Status</th></tr></thead><tbody id="transactionRows"><tr><td colspan="6">Loading transactions…</td></tr></tbody></table></div>
+    </section>
+  </main>
+
+  <dialog id="actionDialog"><form method="dialog" class="dialog-content"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow">RESOLVE ALERT</p><h2 id="dialogTitle">Add a review note</h2><p id="dialogText">A note is required to resolve an alert.</p><label for="resolutionNote">Review note<textarea id="resolutionNote" maxlength="500" placeholder="Example: Balance confirmed with provider operations; action completed."></textarea></label><div class="dialog-actions"><button class="secondary-button" value="cancel">Cancel</button><button class="primary-button" id="confirmResolveButton" value="default">Resolve alert</button></div></form></dialog>
+  <div class="toast" id="toast" role="status" hidden></div>
+  <script src="agent.js"></script>
+</body>
+</html>

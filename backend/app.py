@@ -6,16 +6,22 @@ from typing import Annotated, Literal
 
 import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from db import get_db, init_db, reset_demo_data
+from db import SessionLocal, get_db, init_db, reset_demo_data
 from models import (
     Agent,
     AgentResponse,
     Alert,
     AlertResponse,
     AlertUpdate,
+    CoordinationProposalCreate,
+    CoordinationResponse,
+    CoordinationUpdate,
     DemoResetResponse,
     DemoStaleBalanceResponse,
     HealthResponse,
@@ -30,6 +36,7 @@ from models import (
     Provider,
     ProviderResponse,
     ProviderPosition,
+    SupportCoordination,
     Transaction,
     TransactionCreate,
     TransactionPatternFinding,
@@ -40,20 +47,32 @@ from models import (
 )
 from ml import build_feature_windows, load_model_artifact, score_feature_windows
 from seasonal_ml import load_seasonal_model_artifact, score_monthly_history
-from tools import calculate_cash_velocity, calculate_liquidity_forecast
+from tools import (
+    OPERATIONAL_ATTENTION_BUFFER,
+    SHARED_CASH_ALERT_PROVIDER,
+    calculate_cash_velocity,
+    calculate_liquidity_forecast,
+    reconcile_liquidity_alerts,
+)
 
 
 BACKEND_DIR = Path(__file__).resolve().parent
+FRONTEND_DIR = BACKEND_DIR.parent / "frontend"
 TRANSACTION_MODEL_PATH = BACKEND_DIR / "scripts" / "isolation_forest.joblib"
 SEASONAL_MODEL_PATH = BACKEND_DIR / "scripts" / "seasonal_volume_model.joblib"
 TRANSACTION_METRICS_PATH = BACKEND_DIR / "scripts" / "anomaly_threshold.json"
 SEASONAL_METRICS_PATH = BACKEND_DIR / "scripts" / "seasonal_volume_threshold.json"
 SEASONAL_BASE_YEAR = 2023
-
-
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
+    # A fresh Render instance has no local SQLite data. Seed the synthetic
+    # demo once so the hosted frontend is usable immediately. Existing local
+    # or persistent-disk data is never overwritten at startup.
+    with SessionLocal() as db:
+        demo_exists = db.scalar(select(Agent.id).limit(1)) is not None
+    if not demo_exists:
+        reset_demo_data()
     yield
 
 
@@ -66,6 +85,25 @@ app = FastAPI(
         "It never connects to real wallets, transfers money, or determines fraud."
     ),
     lifespan=lifespan,
+)
+
+# The separately served demo frontend needs to call this local API during
+# development. This permits only common local development origins; it is not
+# an authentication or production access-control mechanism.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://127.0.0.1:5500",
+        "http://localhost:5500",
+        "http://127.0.0.1:3000",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+    ],
+    allow_origin_regex=r"https://[a-zA-Z0-9-]+\.vercel\.app",
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PATCH"],
+    allow_headers=["Content-Type"],
 )
 
 
@@ -111,6 +149,22 @@ def alert_response(alert: Alert) -> AlertResponse:
         note=alert.note,
         created_at=alert.created_at,
         updated_at=alert.updated_at,
+    )
+
+
+def coordination_response(case: SupportCoordination) -> CoordinationResponse:
+    return CoordinationResponse(
+        id=case.id,
+        provider_code=case.provider_code,
+        requester_agent_id=case.requester_agent_id,
+        supporting_agent_id=case.supporting_agent_id,
+        alert_id=case.alert_id,
+        cash_amount=case.cash_amount,
+        e_money_amount=case.e_money_amount,
+        status=case.status,
+        note=case.note,
+        created_at=case.created_at,
+        updated_at=case.updated_at,
     )
 
 
@@ -301,7 +355,253 @@ def list_providers(db: Session = Depends(get_db)) -> list[ProviderResponse]:
     return [
         ProviderResponse(code=provider.code, display_name=provider.display_name)
         for provider in db.scalars(select(Provider).order_by(Provider.code)).all()
+        if provider.code != SHARED_CASH_ALERT_PROVIDER
     ]
+
+
+@app.get("/agents", response_model=list[AgentResponse], tags=["monitoring"])
+def list_agents(db: Session = Depends(get_db)) -> list[AgentResponse]:
+    """List synthetic agents for provider-side filtering and coordination."""
+    return [
+        AgentResponse(
+            id=agent.id,
+            name=agent.name,
+            area=agent.area,
+            shared_cash=agent.shared_cash,
+            cash_threshold=agent.cash_threshold,
+            cash_attention_threshold=agent.cash_threshold,
+            cash_requires_attention=(agent.shared_cash < agent.cash_threshold),
+        )
+        for agent in db.scalars(select(Agent).order_by(Agent.id)).all()
+    ]
+
+
+@app.get("/agents/{agent_id}", response_model=AgentResponse, tags=["monitoring"])
+def get_agent(agent_id: int, db: Session = Depends(get_db)) -> AgentResponse:
+    """Return one synthetic agent for the selected dashboard workspace."""
+    agent = require_selected_agent(db, agent_id)
+    return AgentResponse(
+        id=agent.id,
+        name=agent.name,
+        area=agent.area,
+        shared_cash=agent.shared_cash,
+        cash_threshold=agent.cash_threshold,
+        cash_attention_threshold=agent.cash_threshold,
+        cash_requires_attention=(agent.shared_cash < agent.cash_threshold),
+    )
+
+
+@app.get(
+    "/provider-coordination",
+    response_model=list[CoordinationResponse],
+    tags=["provider operations"],
+)
+def list_provider_coordination(
+    provider_code: str | None = Query(None, description="Limit cases to one provider."),
+    case_status: str | None = Query(None, alias="status", description="Limit by case status."),
+    db: Session = Depends(get_db),
+) -> list[CoordinationResponse]:
+    """List synthetic provider support-coordination cases without wallet access."""
+    query = select(SupportCoordination)
+    if provider_code:
+        query = query.where(SupportCoordination.provider_code == provider_code)
+    if case_status:
+        query = query.where(SupportCoordination.status == case_status)
+    cases = db.scalars(query.order_by(SupportCoordination.created_at.desc())).all()
+    return [coordination_response(case) for case in cases]
+
+
+@app.post(
+    "/provider-coordination/proposals",
+    response_model=CoordinationResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["provider operations"],
+)
+def create_coordination_proposal(
+    payload: CoordinationProposalCreate,
+    db: Session = Depends(get_db),
+) -> CoordinationResponse:
+    """Record a human-created same-provider support proposal for synthetic data.
+
+    Creating a proposal never changes a balance. A later explicit completion is
+    required, modelling provider approval and human confirmation rather than an
+    automatic financial action.
+    """
+    if db.get(Provider, payload.provider_code) is None:
+        raise HTTPException(status_code=404, detail="Provider not found.")
+    requester = db.get(Agent, payload.requester_agent_id)
+    supporting = db.get(Agent, payload.supporting_agent_id)
+    if requester is None or supporting is None:
+        raise HTTPException(status_code=404, detail="Requester or supporting agent was not found.")
+    if payload.alert_id is not None:
+        alert = db.get(Alert, payload.alert_id)
+        if alert is None:
+            raise HTTPException(status_code=404, detail="Linked alert was not found.")
+        if alert.agent_id != requester.id or alert.provider_code != payload.provider_code:
+            raise HTTPException(
+                status_code=422,
+                detail="The linked alert must belong to the requester and selected provider.",
+            )
+
+    case = SupportCoordination(
+        provider_code=payload.provider_code,
+        requester_agent_id=requester.id,
+        supporting_agent_id=supporting.id,
+        alert_id=payload.alert_id,
+        cash_amount=payload.cash_amount,
+        e_money_amount=payload.e_money_amount,
+        status="proposed",
+    )
+    db.add(case)
+    db.commit()
+    db.refresh(case)
+    return coordination_response(case)
+
+
+@app.patch(
+    "/provider-coordination/{case_id}",
+    response_model=CoordinationResponse,
+    tags=["provider operations"],
+)
+def update_coordination_case(
+    case_id: int,
+    payload: CoordinationUpdate,
+    db: Session = Depends(get_db),
+) -> CoordinationResponse:
+    """Complete or cancel a synthetic support case after human confirmation."""
+    case = db.get(SupportCoordination, case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Support coordination case not found.")
+    if case.status != "proposed":
+        raise HTTPException(status_code=409, detail="Only proposed cases can be updated.")
+
+    if payload.status == "completed":
+        requester = db.get(Agent, case.requester_agent_id)
+        supporting = db.get(Agent, case.supporting_agent_id)
+        requester_position = db.scalar(
+            select(ProviderPosition).where(
+                ProviderPosition.agent_id == case.requester_agent_id,
+                ProviderPosition.provider_code == case.provider_code,
+            )
+        )
+        supporting_position = db.scalar(
+            select(ProviderPosition).where(
+                ProviderPosition.agent_id == case.supporting_agent_id,
+                ProviderPosition.provider_code == case.provider_code,
+            )
+        )
+        if not all((requester, supporting, requester_position, supporting_position)):
+            raise HTTPException(status_code=409, detail="Required synthetic balances are unavailable.")
+        if requester.shared_cash < case.cash_amount:
+            raise HTTPException(status_code=422, detail="Requester lacks the proposed physical cash amount.")
+        if supporting_position.balance - case.e_money_amount < supporting_position.safety_threshold:
+            raise HTTPException(
+                status_code=422,
+                detail="Supporting agent would fall below the selected provider safety threshold.",
+            )
+
+        # This deliberately models only a confirmed local simulation: requester
+        # cash moves to the supporter, while the supporter contributes the same
+        # amount of the *same provider's* e-money to the requester. It does not
+        # call a wallet, transfer real funds, or convert between providers.
+        requester.shared_cash -= case.cash_amount
+        supporting.shared_cash += case.cash_amount
+        requester_position.balance += case.e_money_amount
+        supporting_position.balance -= case.e_money_amount
+        timestamp = utc_now()
+        requester_position.recorded_at = timestamp
+        supporting_position.recorded_at = timestamp
+        requester_position.quality_status = "fresh"
+        supporting_position.quality_status = "fresh"
+
+        # Keep an auditable, visible history entry for each agent. These use a
+        # dedicated status so cash-velocity and ML endpoints do not mistake an
+        # operational support settlement for a customer cash-in/cash-out.
+        db.add_all(
+            [
+                Transaction(
+                    agent_id=requester.id,
+                    provider_code=case.provider_code,
+                    event_at=timestamp,
+                    type="support_cash_given",
+                    amount=round(case.cash_amount),
+                    location=requester.area,
+                    status="coordination_completed",
+                ),
+                Transaction(
+                    agent_id=requester.id,
+                    provider_code=case.provider_code,
+                    event_at=timestamp,
+                    type="support_e_money_received",
+                    amount=round(case.e_money_amount),
+                    location=requester.area,
+                    status="coordination_completed",
+                ),
+                Transaction(
+                    agent_id=supporting.id,
+                    provider_code=case.provider_code,
+                    event_at=timestamp,
+                    type="support_cash_received",
+                    amount=round(case.cash_amount),
+                    location=supporting.area,
+                    status="coordination_completed",
+                ),
+                Transaction(
+                    agent_id=supporting.id,
+                    provider_code=case.provider_code,
+                    event_at=timestamp,
+                    type="support_e_money_given",
+                    amount=round(case.e_money_amount),
+                    location=supporting.area,
+                    status="coordination_completed",
+                ),
+            ]
+        )
+
+        if case.alert_id is not None:
+            linked_alert = db.get(Alert, case.alert_id)
+            if linked_alert is not None and linked_alert.status != "resolved":
+                post_support_forecast = calculate_liquidity_forecast(
+                    db, requester_position, timestamp
+                )
+                safe_balance = (
+                    requester_position.balance
+                    >= requester_position.safety_threshold * OPERATIONAL_ATTENTION_BUFFER
+                    and (
+                        post_support_forecast["minutes_to_threshold"] is None
+                        or post_support_forecast["minutes_to_threshold"]
+                        >= 60
+                    )
+                )
+                if safe_balance:
+                    linked_alert.status = "resolved"
+                    linked_alert.note = (
+                        f"Provider-authorized synthetic support case {case.id} completed. "
+                        f"The balance now meets the {OPERATIONAL_ATTENTION_BUFFER:g}x "
+                        f"safety buffer. {payload.note.strip()}"
+                    )
+                else:
+                    linked_alert.status = "acknowledged"
+                    linked_alert.note = (
+                        f"Provider-authorized synthetic support case {case.id} completed, "
+                        "but the balance or forecast remains inside the operational "
+                        f"attention zone and still requires follow-up. {payload.note.strip()}"
+                    )
+
+        # Reconcile both sides of the completed case. If supporting this case
+        # leaves the second agent near its own threshold, that agent receives
+        # a new provider-specific alert.
+        reconcile_liquidity_alerts(
+            db,
+            timestamp,
+            positions=[requester_position, supporting_position],
+        )
+
+    case.status = payload.status
+    case.note = payload.note.strip() if payload.note else None
+    db.commit()
+    db.refresh(case)
+    return coordination_response(case)
 
 
 @app.get(
@@ -309,21 +609,30 @@ def list_providers(db: Session = Depends(get_db)) -> list[ProviderResponse]:
     response_model=list[PositionResponse],
     tags=["monitoring"],
 )
-def list_positions(db: Session = Depends(get_db)) -> list[PositionResponse]:
+def list_positions(
+    agent_id: int | None = Query(None, description="Agent to inspect. Omit for the demo agent."),
+    provider_code: str | None = Query(
+        None, description="Limit the response to one provider's logically separate balance."
+    ),
+    db: Session = Depends(get_db),
+) -> list[PositionResponse]:
     """Return each provider balance with its explainable liquidity forecast."""
-    agent = require_agent(db)
+    agent = require_selected_agent(db, agent_id)
     provider_names = {
         provider.code: provider.display_name
         for provider in db.scalars(select(Provider)).all()
     }
-    positions = db.scalars(
-        select(ProviderPosition)
-        .where(ProviderPosition.agent_id == agent.id)
-        .order_by(ProviderPosition.provider_code)
-    ).all()
+    position_query = select(ProviderPosition).where(ProviderPosition.agent_id == agent.id)
+    if provider_code is not None:
+        position_query = position_query.where(ProviderPosition.provider_code == provider_code)
+    positions = db.scalars(position_query.order_by(ProviderPosition.provider_code)).all()
     now = utc_now()
-    return [
-        PositionResponse(
+    responses: list[PositionResponse] = []
+    for position in positions:
+        forecast = calculate_liquidity_forecast(db, position, now)
+        attention_threshold = position.safety_threshold * OPERATIONAL_ATTENTION_BUFFER
+        responses.append(
+            PositionResponse(
             provider_code=position.provider_code,
             display_name=provider_names[position.provider_code],
             balance=position.balance,
@@ -331,20 +640,34 @@ def list_positions(db: Session = Depends(get_db)) -> list[PositionResponse]:
             safety_threshold=position.safety_threshold,
             recorded_at=position.recorded_at,
             quality_status=position.quality_status,
-            forecast=calculate_liquidity_forecast(db, position, now),
+            attention_threshold=attention_threshold,
+            requires_attention=(
+                position.balance < attention_threshold
+                or (
+                    forecast["minutes_to_threshold"] is not None
+                    and forecast["minutes_to_threshold"] < 60
+                )
+            ),
+            forecast=forecast,
         )
-        for position in positions
-    ]
+        )
+    return responses
 
 
 @app.get("/alerts", response_model=list[AlertResponse], tags=["alerts"])
 def list_alerts(
     include_resolved: bool = Query(False, description="Include alerts already resolved by a human."),
+    agent_id: int | None = Query(None, description="Agent to inspect. Omit for the demo agent."),
+    provider_code: str | None = Query(
+        None, description="Limit the response to one provider's routed alerts."
+    ),
     db: Session = Depends(get_db),
 ) -> list[AlertResponse]:
     """List alerts and the evidence supporting each advisory warning."""
-    agent = require_agent(db)
+    agent = require_selected_agent(db, agent_id)
     query = select(Alert).where(Alert.agent_id == agent.id)
+    if provider_code is not None:
+        query = query.where(Alert.provider_code == provider_code)
     if not include_resolved:
         query = query.where(Alert.status != "resolved")
     alerts = db.scalars(query.order_by(Alert.created_at.desc())).all()
@@ -378,10 +701,11 @@ def list_recent_transactions(
     limit: Annotated[
         int, Query(ge=1, le=100, description="Maximum number of recent synthetic transactions.")
     ] = 8,
+    agent_id: int | None = Query(None, description="Agent to inspect. Omit for the demo agent."),
     db: Session = Depends(get_db),
 ) -> list[TransactionResponse]:
     """Inspect synthetic transactions used as forecast evidence."""
-    agent = require_agent(db)
+    agent = require_selected_agent(db, agent_id)
     transactions = db.scalars(
         select(Transaction)
         .where(Transaction.agent_id == agent.id)
@@ -431,6 +755,7 @@ def create_transaction(
         status=payload.status,
     )
     db.add(transaction)
+    reconcile_liquidity_alerts(db, utc_now())
     db.commit()
     db.refresh(transaction)
 
@@ -455,10 +780,11 @@ def cash_reserve_analysis(
             description="Look-back window in minutes for cash-velocity analysis.",
         ),
     ] = 15,
+    agent_id: int | None = Query(None, description="Agent to inspect. Omit for the demo agent."),
     db: Session = Depends(get_db),
 ) -> dict:
     """Return shared-cash and provider e-money exhaustion estimates as JSON."""
-    agent = require_agent(db)
+    agent = require_selected_agent(db, agent_id)
     return calculate_cash_velocity(db=db, agent_id=agent.id, w=w)
 
 
