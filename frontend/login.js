@@ -34,7 +34,9 @@ function updateRoleUi() {
 
 async function checkBackend() {
   try {
-    const response = await fetch(`${API_BASE_URL}/health`, { signal: AbortSignal.timeout(4000) });
+    const response = await fetch(`${API_BASE_URL}/health`, {
+      signal: AbortSignal.timeout(API_STARTUP_TIMEOUT_MS),
+    });
     if (!response.ok) throw new Error("API did not return a successful response.");
     const payload = await response.json();
     if (payload.status !== "ok") throw new Error("API health check failed.");
@@ -54,7 +56,7 @@ async function checkBackend() {
     statusBox.className = "backend-status offline";
     statusBox.innerHTML = '<span class="status-dot"></span><span>Deployed API unavailable</span>';
     errorBox.hidden = false;
-    errorBox.textContent = "The deployed API could not be reached. Refresh the page after the service is available. No login data was sent.";
+    errorBox.textContent = `The deployed API could not be reached: ${error.message} It may still be starting; wait a moment and refresh. No login data was sent.`;
   }
 }
 
