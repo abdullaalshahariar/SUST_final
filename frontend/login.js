@@ -1,7 +1,3 @@
-const API_BASE_URL = ["127.0.0.1", "localhost"].includes(window.location.hostname)
-  ? "http://127.0.0.1:8000"
-  : "https://sust-final.onrender.com";
-
 const form = document.querySelector("#loginForm");
 const statusBox = document.querySelector("#backendStatus");
 const loginButton = document.querySelector("#loginButton");
@@ -38,7 +34,9 @@ function updateRoleUi() {
 
 async function checkBackend() {
   try {
-    const response = await fetch(`${API_BASE_URL}/health`, { signal: AbortSignal.timeout(4000) });
+    const response = await fetch(`${API_BASE_URL}/health`, {
+      signal: AbortSignal.timeout(API_STARTUP_TIMEOUT_MS),
+    });
     if (!response.ok) throw new Error("API did not return a successful response.");
     const payload = await response.json();
     if (payload.status !== "ok") throw new Error("API health check failed.");
@@ -52,13 +50,13 @@ async function checkBackend() {
     populateWorkspaceChoices(await agentsResponse.json(), await providersResponse.json());
 
     statusBox.className = "backend-status ready";
-    statusBox.innerHTML = '<span class="status-dot"></span><span>Local API connected</span>';
+    statusBox.innerHTML = '<span class="status-dot"></span><span>Deployed API connected</span>';
     loginButton.disabled = false;
   } catch (error) {
     statusBox.className = "backend-status offline";
-    statusBox.innerHTML = '<span class="status-dot"></span><span>Local API unavailable — start the backend on port 8000</span>';
+    statusBox.innerHTML = '<span class="status-dot"></span><span>Deployed API unavailable</span>';
     errorBox.hidden = false;
-    errorBox.textContent = "Start the backend first, then refresh this page. No login data was sent.";
+    errorBox.textContent = `The deployed API could not be reached: ${error.message} It may still be starting; wait a moment and refresh. No login data was sent.`;
   }
 }
 

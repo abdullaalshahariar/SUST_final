@@ -1,8 +1,7 @@
 # Deploy the frontend to Vercel
 
-This directory is a plain static HTML/CSS/JavaScript site. It calls the API at
-`https://sust-final.onrender.com` when deployed, and `http://127.0.0.1:8000`
-when opened locally.
+This directory is a plain static HTML/CSS/JavaScript site. It always calls the
+deployed API at `https://sust-final.onrender.com`, including when opened locally.
 
 In Vercel, import the same Git repository and set **Root Directory** to
 `frontend`. Use the **Other** framework preset, with no build command and no

@@ -1,6 +1,3 @@
-const API_BASE_URL = ["127.0.0.1", "localhost"].includes(window.location.hostname)
-  ? "http://127.0.0.1:8000"
-  : "https://sust-final.onrender.com";
 const session = JSON.parse(sessionStorage.getItem("agentflow_demo_session") || "{}");
 const agentId = Number(session.agentId || 1);
 const state = { providers: [], positions: [], alerts: [], transactions: [], reserve: null, agent: null };
@@ -32,7 +29,7 @@ function toast(message) { const node = $("#toast"); node.textContent = message; 
 
 function renderHeader() {
   $("#agentName").textContent = state.agent.name;
-  $("#agentMeta").textContent = `Agent ${state.agent.id} · ${state.agent.area} · Live data from the local API`;
+  $("#agentMeta").textContent = `Agent ${state.agent.id} · ${state.agent.area} · Live data from the deployed API`;
 }
 
 function renderSummary() {
@@ -139,7 +136,7 @@ async function refreshDashboard() {
     await runInference();
     $("#updatedAt").textContent = `Last refreshed ${new Date().toLocaleTimeString()}`;
     setApiStatus("ready", "Live API connected");
-  } catch (error) { setApiStatus("error", "API connection failed"); showError(`${error.message} Start the backend on port 8000, then refresh.`); }
+  } catch (error) { setApiStatus("error", "API connection failed"); showError(`${error.message} Refresh after the deployed API is available.`); }
 }
 async function patchAlert(alertId, payload) { await api(`/alerts/${alertId}`, { method: "PATCH", body: JSON.stringify(payload) }); await refreshDashboard(); }
 

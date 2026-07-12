@@ -87,9 +87,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# The separately served demo frontend needs to call this local API during
-# development. This permits only common local development origins; it is not
-# an authentication or production access-control mechanism.
+# Permit the separately hosted static frontend to call this public demo API.
+# Render and Vercel preview/production hostnames are accepted, along with the
+# common local origins used during frontend development.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -100,7 +100,7 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:5173",
     ],
-    allow_origin_regex=r"https://[a-zA-Z0-9-]+\.vercel\.app",
+    allow_origin_regex=r"https://[a-zA-Z0-9-]+\.(?:onrender\.com|vercel\.app)",
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH"],
     allow_headers=["Content-Type"],
