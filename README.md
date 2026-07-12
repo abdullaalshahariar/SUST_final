@@ -4,6 +4,15 @@ A synthetic, advisory-only decision-support prototype for monitoring an agent's 
 
 It estimates liquidity pressure, detects selected unusual transaction patterns, identifies unexpected seasonal monthly volume, and keeps alert resolution under human control. The application does not connect to real wallets, move money, block transactions, or make fraud decisions.
 
+# Hosted Website link
+```
+https://sust-final-1.onrender.com/login.html
+```
+# Hosted Backend
+```
+https://sust-final.onrender.com/docs
+```
+
 ## Table of contents
 
 - [Features](#features)
@@ -41,7 +50,66 @@ It estimates liquidity pressure, detects selected unusual transaction patterns, 
 ### Transaction Liquidity
 ![](docs/images/Transaction_Liquidity.png)
 ### Alert-condition and human-review flow
-![](docs/images/Alert-condition_and_human-review flow.png)
+![](docs/images/Alert_condition_and_human_review_flow.png)
+
+## Machine Learning
+We use two models because they solve two different kinds of unusual activity.
+
+| Model | Problem it solves | Why it fits |
+|---|---|---|
+| Isolation Forest | Sudden unusual transaction pattern in minutes | It finds rare patterns without needing many real fraud labels. |
+| Random Forest Regressor | Monthly volume much higher than expected | It predicts normal monthly volume using agent, provider, location, month, and Eid context. |
+
+Isolation Forest is used for short-term behavior.
+
+Example:
+
+```text
+12 similar Nagad cash-outs
+within 10 minutes
+around ৳5,000 each
+```
+
+This is different from normal transaction behavior. We do not have real labeled fraud data, so Isolation Forest is a good choice because it learns what normal-looking windows are and flags rare-looking windows.
+
+It is also combined with clear review gates:
+
+```text
+At least 10 cash-outs
+At least 75% similar amounts
+ML anomaly score above threshold
+```
+
+That makes the flag explainable and reduces false positives from random activity.
+
+Random Forest Regressor is used for long-term seasonal behavior.
+
+Example:
+
+```text
+Normal month expected: ৳100,000
+Actual monthly volume:  ৳350,000
+→ Requires review
+```
+
+But during Eid:
+
+```text
+Expected Eid volume: ৳500,000
+Actual volume:       ৳520,000
+→ Likely normal seasonal demand
+```
+
+A Random Forest is suitable because expected monthly volume depends on several non-linear factors together:
+
+- agent
+- provider
+- location
+- month
+- year trend
+- Eid or normal context
+
+It can learn that Eid volume is normally high without requiring you to manually write many complex rules.
 
 ## Project Structure
 ```
