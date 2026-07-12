@@ -17,12 +17,12 @@ https://sust-final.onrender.com/docs
 
 - [Features](#features)
 - [Architecture](#architecture)
+- [Machine Learning](#machine-learning)
 - [Project structure](#project-structure)
 - [Prerequisites](#prerequisites)
 - [Quick start](#quick-start)
 - [Using the API](#using-the-api)
 - [AI and analytics](#ai-and-analytics)
-- [Alert lifecycle](#alert-lifecycle)
 - [Demo scenarios](#demo-scenarios)
 - [Adding photos and screenshots](#adding-photos-and-screenshots)
 - [Current limitations](#current-limitations)
@@ -109,7 +109,7 @@ A Random Forest is suitable because expected monthly volume depends on several n
 - year trend
 - Eid or normal context
 
-It can learn that Eid volume is normally high without requiring you to manually write many complex rules.
+It can learn that Eid volume is normally high without requiring you to manually write many complex rules. We used `backend/scripts/agent_monthly_history.csv` dataset for training the model.
 
 ## Project Structure
 ```
@@ -167,6 +167,42 @@ Create and activate a virtual environment from the repository root.
    ```
 
 6. Open `frontend/index.html` in a browser to view the current static dashboard.
+
+## Quick Start
+**Quick Start (Local)**
+
+- Prereqs: Python 3.10+ and `pip`.
+
+- Install backend deps (from repo root):
+
+  - `python3 -m venv .venv`
+  - `source .venv/bin/activate`
+  - `pip install -r backend/requirements.txt`
+
+- Run the backend API:
+
+  - `uvicorn app:app --app-dir backend --reload`
+
+- (Optional) Reset/seed demo data:
+
+  - `curl -X POST http://127.0.0.1:8000/demo/reset`
+
+- Check the API is up:
+
+  - `curl http://127.0.0.1:8000/health`
+  - Open docs: `http://127.0.0.1:8000/docs`
+
+- Open the frontend:
+
+  - Open `frontend/login.html` in your browser (or `frontend/index.html` if you use the redirect page).
+  - The dashboards call the API using the configured base URL in `frontend/api-config.js`.
+
+**Quick Start (Deployed on Render)**
+
+- Frontend: `https://sust-final-1.onrender.com`
+- Backend API: `https://sust-final.onrender.com`
+- Health check: `https://sust-final.onrender.com/health`
+- API docs: `https://sust-final.onrender.com/docs`
 
 ## Using the API
 
