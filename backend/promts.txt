@@ -1,1 +1,4 @@
-data fetch from database failing. still login page saying i do not have local api running. I hosted static site in render and the backend as well .
+The live backend is already accepting your frontend origin: /health, /agents, and the CORS preflight all return 200 with Access-Control-Allow-Origin: https://sust-final-1.onrender.com.
+
+
+ok. the /provider_dashboard is fettiching data from the bakend. but the login page says it cannot connect to database. get rid of thoose checks.
