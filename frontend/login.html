@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="login.css">
+  <link rel="stylesheet" href="login.css?v=2">
 </head>
 <body>
   <main class="page-shell">
@@ -34,11 +34,6 @@
 
     <section class="login-panel" aria-labelledby="sign-in-title">
       <div class="login-card">
-        <div class="backend-status" id="backendStatus" role="status">
-          <span class="status-dot checking"></span>
-          <span>Checking deployed API connection…</span>
-        </div>
-
         <div class="form-heading">
           <p class="eyebrow accent">DEMO ACCESS</p>
           <h2 id="sign-in-title">Choose your workspace</h2>
@@ -74,21 +69,22 @@
           <div class="agent-field" id="agentField">
             <label for="agentSelect">Select agent</label>
             <select id="agentSelect" name="agent_id">
-              <option value="">Loading agents from the database…</option>
+              <option value="1">Agent 1 — Zindabazar Super Agent</option>
             </select>
-            <p>Agent selection is stored only for this browser session.</p>
+            <p>Agent selection is stored only for this browser session. Live data loads in the workspace.</p>
           </div>
 
           <div class="agent-field" id="providerField" hidden>
             <label for="providerSelect">Select provider workspace</label>
             <select id="providerSelect" name="provider_code">
-              <option value="">Loading providers from the database…</option>
+              <option value="bkash_sim">bKash Provider Operations</option>
+              <option value="nagad_sim" selected>Nagad Provider Operations</option>
+              <option value="rocket_sim">Rocket Provider Operations</option>
             </select>
-            <p>This workspace displays only the selected provider's routed alerts and e-money positions.</p>
+            <p>This workspace loads the selected provider's routed alerts and e-money positions.</p>
           </div>
 
-          <p class="form-error" id="formError" role="alert" hidden></p>
-          <button class="login-button" id="loginButton" type="submit" disabled>
+          <button class="login-button" id="loginButton" type="submit">
             <span>Open agent dashboard</span><span aria-hidden="true">→</span>
           </button>
         </form>
@@ -97,7 +93,6 @@
       </div>
     </section>
   </main>
-  <script src="api-config.js?v=3"></script>
-  <script src="login.js?v=3"></script>
+  <script src="login.js?v=4"></script>
 </body>
 </html>
