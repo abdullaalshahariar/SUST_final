@@ -5,7 +5,7 @@ const $ = (selector) => document.querySelector(selector);
 const money = (value) => `৳ ${Number(value || 0).toLocaleString("en-BD", { maximumFractionDigits: 0 })}`;
 const providerLabel = (code) => ({ bkash_sim: "bKash", nagad_sim: "Nagad", rocket_sim: "Rocket" }[code] || code);
 
-async function api(path, options = {}) { const response = await fetch(`${API_BASE_URL}${path}`, { headers: { "Content-Type": "application/json" }, ...options }); if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.detail || `API request failed (${response.status})`); } return response.json(); }
+async function api(path, options = {}) { const headers = new Headers(options.headers); if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json"); const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers }); if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.detail || `API request failed (${response.status})`); } return response.json(); }
 function setApiStatus(kind, text) { const node = $("#apiStatus"); node.className = `api-status ${kind}`; node.innerHTML = `<i></i> ${text}`; }
 function showError(message) { $("#errorBanner").textContent = message; $("#errorBanner").hidden = false; }
 function toast(message) { const node = $("#toast"); node.textContent = message; node.hidden = false; setTimeout(() => { node.hidden = true; }, 3800); }
