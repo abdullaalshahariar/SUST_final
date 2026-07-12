@@ -26,6 +26,7 @@ https://sust-final.onrender.com/docs
 - [Demo scenarios](#demo-scenarios)
 - [Current limitations](#current-limitations)
 - [Safety and data note](#safety-and-data-note)
+- [Video Link](#video-link)
 
 ## Features
 
@@ -288,3 +289,7 @@ After `POST /demo/reset`, the local database contains synthetic examples for dem
 
 This prototype is for demonstration and operational decision support only. Treat all forecasts and ML outputs as advisory signals that require human verification. Do not use it to make fraud determinations or to store customer credentials, PINs, OTPs, or other sensitive personal data.
 
+## Video Link
+```
+https://youtu.be/kGlu1J6h980?si=a0zZ9gYoJHEwd0G3
+```
