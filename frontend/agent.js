@@ -9,7 +9,11 @@ const providerColor = (code) => ({ bkash_sim: "#d6336c", nagad_sim: "#7048a5", r
 const minutes = (value) => value === null || value === undefined ? "No depletion estimate" : `${Math.max(0, Math.round(value))} min`;
 
 async function api(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, { headers: { "Content-Type": "application/json" }, ...options });
+  const headers = new Headers(options.headers);
+  // A Content-Type header on a GET turns it into a CORS-preflighted request.
+  // Send it only for JSON bodies, which keeps the first dashboard load fast.
+  if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.detail || `API request failed (${response.status})`);
@@ -122,20 +126,49 @@ async function runInference() {
   ]);
   renderPattern(pattern); renderMonthly(monthly);
 }
+
+function showPanelMessage(selector, message) {
+  const panel = $(selector);
+  const notice = document.createElement("div");
+  notice.className = "empty-state";
+  notice.textContent = message;
+  panel.replaceChildren(notice);
+}
+
+async function loadModelResults() {
+  // Model artifacts can take noticeably longer than the normal SQLite-backed
+  // dashboard endpoints on a cold Render instance. They are supplementary,
+  // so never hold up the live balance and alert data.
+  const [metricsResult, inferenceResult] = await Promise.allSettled([
+    api("/metrics"),
+    runInference(),
+  ]);
+  if (metricsResult.status === "fulfilled") {
+    renderMetrics(metricsResult.value);
+  } else {
+    showPanelMessage("#metricsGrid", `Model metrics are temporarily unavailable: ${metricsResult.reason.message}`);
+  }
+  if (inferenceResult.status === "rejected") {
+    const message = `Analysis is temporarily unavailable: ${inferenceResult.reason.message}`;
+    showPanelMessage("#patternPanel", message);
+    showPanelMessage("#monthlyPanel", message);
+  }
+}
+
 async function refreshDashboard() {
   clearError(); setApiStatus("", "Refreshing live data…");
   const windowMinutes = $("#windowFilter").value;
   try {
-    const [agent, providers, positions, reserve, alerts, transactions, metrics] = await Promise.all([
-      api(`/agents/${agentId}`), api("/providers"), api(`/positions?agent_id=${agentId}`), api(`/cash_reserve_analysis?agent_id=${agentId}&w=${windowMinutes}`), api(`/alerts?agent_id=${agentId}&include_resolved=true`), api(`/transactions?agent_id=${agentId}&limit=20`), api("/metrics"),
+    const [agent, providers, positions, reserve, alerts, transactions] = await Promise.all([
+      api(`/agents/${agentId}`), api("/providers"), api(`/positions?agent_id=${agentId}`), api(`/cash_reserve_analysis?agent_id=${agentId}&w=${windowMinutes}`), api(`/alerts?agent_id=${agentId}&include_resolved=true`), api(`/transactions?agent_id=${agentId}&limit=20`),
     ]);
     Object.assign(state, { agent, providers, positions, reserve, alerts, transactions });
     const selector = $("#providerFilter");
     const previous = selector.value; selector.innerHTML = `<option value="all">All providers</option>${providers.map((p) => `<option value="${p.code}">${p.display_name}</option>`).join("")}`; selector.value = [...selector.options].some((o) => o.value === previous) ? previous : "all";
-    renderHeader(); renderSummary(); renderPositions(); renderReserve(); renderQuality(); renderAlerts(); renderTransactions(); renderMetrics(metrics);
-    await runInference();
+    renderHeader(); renderSummary(); renderPositions(); renderReserve(); renderQuality(); renderAlerts(); renderTransactions();
     $("#updatedAt").textContent = `Last refreshed ${new Date().toLocaleTimeString()}`;
     setApiStatus("ready", "Live API connected");
+    void loadModelResults();
   } catch (error) { setApiStatus("error", "API connection failed"); showError(`${error.message} Refresh after the deployed API is available.`); }
 }
 async function patchAlert(alertId, payload) { await api(`/alerts/${alertId}`, { method: "PATCH", body: JSON.stringify(payload) }); await refreshDashboard(); }
