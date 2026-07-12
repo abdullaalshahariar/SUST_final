@@ -1,7 +1,3 @@
-const API_BASE_URL = ["127.0.0.1", "localhost"].includes(window.location.hostname)
-  ? "http://127.0.0.1:8000"
-  : "https://sust-final.onrender.com";
-
 const form = document.querySelector("#loginForm");
 const statusBox = document.querySelector("#backendStatus");
 const loginButton = document.querySelector("#loginButton");
@@ -52,13 +48,13 @@ async function checkBackend() {
     populateWorkspaceChoices(await agentsResponse.json(), await providersResponse.json());
 
     statusBox.className = "backend-status ready";
-    statusBox.innerHTML = '<span class="status-dot"></span><span>Local API connected</span>';
+    statusBox.innerHTML = '<span class="status-dot"></span><span>Deployed API connected</span>';
     loginButton.disabled = false;
   } catch (error) {
     statusBox.className = "backend-status offline";
-    statusBox.innerHTML = '<span class="status-dot"></span><span>Local API unavailable — start the backend on port 8000</span>';
+    statusBox.innerHTML = '<span class="status-dot"></span><span>Deployed API unavailable</span>';
     errorBox.hidden = false;
-    errorBox.textContent = "Start the backend first, then refresh this page. No login data was sent.";
+    errorBox.textContent = "The deployed API could not be reached. Refresh the page after the service is available. No login data was sent.";
   }
 }
 

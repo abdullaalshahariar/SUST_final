@@ -1,1 +1,0 @@
-maybe declare constant for agents.id too in models.py?
