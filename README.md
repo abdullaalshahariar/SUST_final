@@ -17,14 +17,13 @@ https://sust-final.onrender.com/docs
 
 - [Features](#features)
 - [Architecture](#architecture)
-- [Machine Learning](#machine-learning)
+- [Dataset and Machine Learning Models](#dataset-and-machine-learning-models)
+- [Validation Evidence (Availability, Reliability, Maintainability)](#validation-evidence-availability-reliability-maintainability)
 - [Project structure](#project-structure)
 - [Prerequisites](#prerequisites)
 - [Quick start](#quick-start)
 - [Using the API](#using-the-api)
-- [AI and analytics](#ai-and-analytics)
 - [Demo scenarios](#demo-scenarios)
-- [Adding photos and screenshots](#adding-photos-and-screenshots)
 - [Current limitations](#current-limitations)
 - [Safety and data note](#safety-and-data-note)
 
@@ -52,13 +51,15 @@ https://sust-final.onrender.com/docs
 ### Alert-condition and human-review flow
 ![](docs/images/Alert_condition_and_human_review_flow.png)
 
-## Machine Learning
+## Dataset and Machine Learning Models
 We use two models because they solve two different kinds of unusual activity.
 
 | Model | Problem it solves | Why it fits |
 |---|---|---|
 | Isolation Forest | Sudden unusual transaction pattern in minutes | It finds rare patterns without needing many real fraud labels. |
 | Random Forest Regressor | Monthly volume much higher than expected | It predicts normal monthly volume using agent, provider, location, month, and Eid context. |
+
+The dataset `backend/scripts/scenario2_transactions.csv` containing 6862 synthetic transaction data was used for training the models
 
 Isolation Forest is used for short-term behavior.
 
@@ -109,7 +110,17 @@ A Random Forest is suitable because expected monthly volume depends on several n
 - year trend
 - Eid or normal context
 
-It can learn that Eid volume is normally high without requiring you to manually write many complex rules. We used `backend/scripts/agent_monthly_history.csv` dataset for training the model.
+It can learn that Eid volume is normally high without requiring you to manually write many complex rules. 
+
+## Validation Evidence (Availability, Reliability, Maintainability)
+Availability can be checked from this status page,
+```
+https://kn50r7tw.status.cron-job.org/
+```
+Reliability and maintainability can be tracked from this link from **sonarcloud**,
+```
+https://sonarcloud.io/project/overview?id=abdullaalshahariar_SUST_final
+```
 
 ## Project Structure
 ```
